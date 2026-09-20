@@ -10,7 +10,9 @@
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
     "db:apply": "node scripts/apply-sql.mjs",
-    "db:sessions": "tsx prisma/seed-sessions.ts"
+    "db:sessions": "tsx prisma/seed-sessions.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

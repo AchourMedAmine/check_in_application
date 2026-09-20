@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
       
       - run: npm ci
@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
       
       - run: npm ci
@@ -37,34 +37,23 @@ jobs:
           name: next-build
           path: .next
 
+  # NOTE: never run `prisma migrate` / `prisma db push` from this repo. The
+  # database belongs to the TRSYP website and this schema only maps a few of
+  # its tables, so Prisma would try to drop all the others. Schema changes are
+  # hand-written SQL in prisma/sql/, applied with `npm run db:apply`.
   test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_db
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-    
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
-      
+
       - run: npm ci
-      - run: npx prisma db push --skip-generate
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+      - run: npm run db:generate
+      - run: npm run typecheck
+      - run: npm test
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
