@@ -27,9 +27,10 @@ npm install
 cp .env.example .env.local
 # Edit .env.local with your Supabase DATABASE_URL
 
-# 3. Initialize database
-npx prisma generate
-npm run db:push
+# 3. Generate the Prisma client + create the check-in tables
+npm run db:generate
+npm run db:apply prisma/sql/001_checkin_schema.sql
+npm run db:sessions
 
 # 4. Start development server
 npm run dev
@@ -38,54 +39,54 @@ npm run dev
 
 ## 📱 How to Use
 
-1. Pre-register participants with their QR codes in the database
-2. Open the application
-3. Use a barcode scanner or mobile device to scan QR codes
-4. The scanner input field is always ready to receive scans
-5. Only registered participants can be scanned
-6. Each successful scan updates the attendance timestamp
-7. View all scanned participants in the table below
+1. Open the application — it shows the currently open session and its progress
+2. Scan with the **camera** (needs HTTPS or localhost) or the **keyboard** mode
+   (USB/Bluetooth barcode scanner, or paste an id and press Enter)
+3. Badges are not printed yet, so the QR content is the participant's `id`
+4. Each new scan creates a check-in; re-scanning shows "already checked in"
+5. "Not yet checked in" lists everyone still missing from the mandatory session
 
-## 🔌 API Endpoint
+## 🔌 API
 
 ```
 POST /api/scan
-{
-  "qrCode": "participant_qr_code"
-}
+{ "qrCode": "<participant id>", "sessionId"?: "...", "stationId"?: "door-A" }
+→ { participant, session, presence, alreadyCheckedIn, stats }
 
-Response (Success - Participant found):
-{
-  "success": true,
-  "data": {
-    "id": "...",
-    "qrCode": "...",
-    "name": "...",
-    "email": "...",
-    "scannedAt": "2024-01-01T12:00:00Z",
-    "updatedAt": "2024-01-01T12:00:00Z"
-  }
-}
-
-Response (Error - Participant not found):
-{
-  "success": false,
-  "error": "Participant not found. QR code not registered."
-}
+GET  /api/sessions                      → sessions with attendance stats
+GET  /api/sessions/[id]/attendance      → { checkedIn[], missing[], stats }
+GET  /api/scan                          → all participants (testing helper)
 ```
 
-## 📊 Database Schema
+Scanning the same badge twice is harmless: the second scan returns the existing
+record with `alreadyCheckedIn: true` instead of creating a duplicate.
 
-```sql
-CREATE TABLE participants (
-  id          STRING PRIMARY KEY,
-  qrCode      STRING UNIQUE NOT NULL,
-  name        STRING,
-  email       STRING,
-  scannedAt   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updatedAt   TIMESTAMP
-);
+## 📊 Database
+
+Two Postgres schemas:
+
+- **`public`** — owned by the TRSYP website. This app only *reads*
+  `participants` (joined to `users` for name/lastName via `user_id`).
+- **`checkin`** — owned by this app: `sessions` and `presences`. No foreign
+  keys point into `public`, so the website's migrations and ours never collide.
+
 ```
+checkin.sessions   id, title, location, starts_at, ends_at, mandatory,
+                   break_allowance_minutes, penalty_points, status
+checkin.presences  id, participant_id, session_id, check_in_at, check_out_at,
+                   station_id
+```
+
+A participant may have several `presences` rows per session (they can step out
+and return). A partial unique index guarantees at most one *open* interval
+(`check_out_at IS NULL`) per participant per session.
+
+## 🎟️ Sessions
+
+Scans are recorded against the session whose `status` is `Open`. Edit
+`prisma/seed-sessions.ts` and run `npm run db:sessions` to add sessions or
+change which one is open. The Opening Ceremony is `mandatory`, so every
+participant is expected and the UI lists whoever has not checked in yet.
 
 ## 🛠️ Development
 
@@ -97,11 +98,17 @@ npm run dev
 npm run build
 npm start
 
-# Database management
-npm run db:push       # Sync schema
-npm run db:migrate    # Create migration
-npm run db:studio     # Prisma Studio
+# Database
+npm run db:generate                # regenerate the Prisma client
+npm run db:apply <file.sql>        # run a SQL file on the `checkin` schema
+npm run db:sessions                # create/update the sessions
+npm run db:studio                  # Prisma Studio
 ```
+
+> ⚠️ **Never run `prisma migrate` or `prisma db push` from this repo.** The
+> database belongs to the TRSYP website and its schema only has `Participant`
+> and `User` mapped — Prisma would try to drop every other table. All schema
+> changes here are hand-written SQL in `prisma/sql/`, applied with `db:apply`.
 
 ## 🚢 Deployment
 
@@ -173,10 +180,7 @@ NEXT_PUBLIC_API_URL="https://your-domain.com"
 **Build fails?**
 ```bash
 # Regenerate Prisma client
-npx prisma generate
-
-# Push schema to database
-npm run db:push
+npm run db:generate
 
 # Try building again
 npm run build

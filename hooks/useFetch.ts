@@ -6,7 +6,7 @@ interface FetchOptions extends RequestInit {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 }
 
-export function useFetch<T = any>() {
+export function useFetch<T = unknown>() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

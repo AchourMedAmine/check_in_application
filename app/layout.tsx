@@ -1,49 +1,52 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Orbitron, Host_Grotesk } from "next/font/google";
+import SignOutButton from "@/components/SignOutButton";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const hostGrotesk = Host_Grotesk({
+  variable: "--font-host-grotesk",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const orbitron = Orbitron({
+  variable: "--font-orbitron",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "QR Code Scanner - Participant Registration",
-  description: "Scan QR codes to register participant attendance",
+  title: "TRSYP Check-in",
+  description: "Scan participant QR codes to register session attendance",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${hostGrotesk.variable} ${orbitron.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col bg-gray-50 dark:bg-black">
-        <nav className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  📱 QR Scanner
-                </h1>
-              </div>
+      <body className="min-h-full flex flex-col">
+        <header className="admin-header">
+          <div className="admin-header-inner">
+            <div className="admin-header-left">
+              <span className="admin-heading text-lg font-bold">
+                TRSYP<span style={{ color: "var(--color-green)" }}> CHECK-IN</span>
+              </span>
+            </div>
+            <div className="admin-header-right">
+              <span className="admin-header-name">Staff scanner</span>
+              <SignOutButton />
             </div>
           </div>
-        </nav>
+        </header>
 
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 text-gray-900 dark:text-white">
+        <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-8">
           {children}
         </main>
 
-        <footer className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 mt-12">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-sm text-gray-600 dark:text-gray-400">
-            <p>QR Code Participant Scanner</p>
-          </div>
+        <footer className="px-4 py-6 text-center text-xs text-[var(--viz-ink-faint)]">
+          TRSYP {new Date().getFullYear()}
         </footer>
       </body>
     </html>

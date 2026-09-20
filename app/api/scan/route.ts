@@ -1,52 +1,70 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { handleApiRequest } from "@/lib/api-handler";
-import { ScanQRInput, ScannedResult } from "@/lib/types";
-import { ValidationError } from "@/lib/errors";
+import { ScanQRInput } from "@/lib/types";
+import { NotFoundError, ValidationError } from "@/lib/errors";
+import { getActiveSession, getSessionOrThrow } from "@/lib/attendance/session";
+import { recordScan, getSessionStats } from "@/lib/attendance/scan";
 
-// POST /api/scan - Scan QR code (existing participants only)
+// name / lastName / email live on `users`, joined via participants.user_id
+const withUser = {
+  user: { select: { id: true, email: true, name: true, lastName: true } },
+} as const;
+
+// POST /api/scan — toggle a participant's presence in the active session.
+// Body: { qrCode: "<participant id>", sessionId?, stationId? }
 export async function POST(req: NextRequest) {
   return handleApiRequest(async () => {
     const body = (await req.json()) as ScanQRInput;
+    const id = body.qrCode?.trim();
 
-    // Validation
-    if (!body.qrCode || body.qrCode.trim() === "") {
+    if (!id) {
       throw new ValidationError("QR code is required");
     }
 
-    // Find participant by QR code
-    const participant = await prisma.participant.findUnique({
-      where: { qrCode: body.qrCode },
-    });
+    const session = body.sessionId
+      ? await getSessionOrThrow(body.sessionId)
+      : await getActiveSession();
 
-    // Only allow scanning existing participants
-    if (!participant) {
-      throw new ValidationError(
-        "Participant not found. QR code not registered."
-      );
+    if (session.status !== "Open") {
+      throw new ValidationError(`Session "${session.title}" is not open`);
     }
 
-    // Update scan time
-    const updated = await prisma.participant.update({
-      where: { qrCode: body.qrCode },
-      data: {
-        scannedAt: new Date(),
-      },
+    const participant = await prisma.participant.findUnique({
+      where: { id },
+      include: withUser,
     });
 
-    return updated;
+    if (!participant) {
+      throw new NotFoundError("Participant");
+    }
+
+    const outcome = await recordScan({
+      participantId: participant.id,
+      session,
+      stationId: body.stationId,
+    });
+
+    return {
+      participant,
+      session: {
+        id: session.id,
+        title: session.title,
+        breakAllowanceMinutes: session.breakAllowanceMinutes,
+        audience: session.audience,
+      },
+      ...outcome,
+      stats: await getSessionStats(session),
+    };
   }, req);
 }
 
-// GET /api/scan - Get all scanned participants
+// GET /api/scan — all registered participants (handy for testing without badges)
 export async function GET(req: NextRequest) {
   return handleApiRequest(async () => {
-    const participants = await prisma.participant.findMany({
-      orderBy: {
-        scannedAt: "desc",
-      },
+    return prisma.participant.findMany({
+      include: withUser,
+      orderBy: { user: { lastName: "asc" } },
     });
-
-    return participants;
   }, req);
 }

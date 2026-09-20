@@ -1,19 +1,266 @@
+// Prisma 7: the datasource URL lives in prisma.config.ts, not here.
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // The website owns `public`; this app owns `checkin` and nothing else.
+  schemas  = ["public", "checkin"]
+
+  // No physical foreign keys between the two schemas: Prisma resolves
+  // relations in the app layer instead. That keeps the website's migrations
+  // on `public` completely independent of our tables.
+  relationMode = "prisma"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Read-only mirror of the TRSYP website's `participants` table.
+// Scalar fields copied 1:1 from the website's Participant model; relations
+// (User, Room, Invitation, Team…) are intentionally omitted — this app only
+// looks participants up. Enum names/labels MUST match the Postgres types.
+// Never run `prisma migrate` / `db push` from this repo.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ParticipantType {
+  NonIEEE
+  Student
+  YoungProfessional
+
+  @@schema("public")
+}
+
+enum SB {
+  ENIS
+  ENSI
+  SupCom
+  EPS
+  EPPM
+  ISI
+  ISETRADES
+  INAT
+  IIT
+  PolytechSfax
+  ESSTHS
+  ISIMS
+  ISSATM
+  ENISO
+  EPI
+  ISIMM
+  ENICarthage
+  ENIG
+  INSAT
+  FST
+  ENIB
+  ENSIT
+  ENIM
+  FSB
+  ENETCom
+  ISETCom
+  ULT
+  ISSATSo
+  ENSTAB
+  ENIT
+  ISETDjerba
+  TEKUP
+  SESAME
+  ISIMa
+  EPT
+  ISIMG
+  UCentrale
+  ISTIC
+  ISTMT
+  ESPIN
+  FSG
+  ISETNABEUL
+  ISETKef
+  ESPRIT
+  ESPITA
+  ISETBizerte
+  ISETKairouan
+  SMU
+  ISGI
+  FSS
+  FSM
+  CU
+  MSE
+  ISGIS
+  Other
+
+  @@schema("public")
+}
+
+enum COUNTRY {
+  Tunisia
+  Algeria
+  Morocco
+  Libya
+  Egypt
+  USA
+  UK
+  Canada
+  Germany
+  France
+  Italy
+  Spain
+  UAE
+  SaudiArabia
+  Jordan
+  Lebanon
+  Palestine
+  Syria
+  Iraq
+  Sudan
+  Turkey
+  India
+  Pakistan
+  Bangladesh
+  China
+  Japan
+  SouthKorea
+  Australia
+  Brazil
+  Argentina
+  Mexico
+  Other
+
+  @@schema("public")
 }
 
 model Participant {
-  id        String   @id @default(cuid())
-  qrCode    String   @unique
-  name      String?
-  email     String?
-  scannedAt DateTime @default(now())
+  id              String          @id @default(uuid())
+  userId          String          @unique @map("user_id")
+  ieeeId          Int?            @unique @map("ieee_id")
+  phone           String          @unique
+  gender          String
+  paid            Boolean         @default(false)
+  isInternational Boolean         @default(false) @map("is_international")
+  isRas           Boolean         @default(false) @map("is_ras")
+  banned          Boolean         @default(false)
+  participantType ParticipantType @map("participant_type")
+  sb              SB?
+  country         COUNTRY
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  roomId          String?
+
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  presences Presence[]
+  sessions  SessionParticipant[]
+
+  @@index([userId])
+  @@map("participants")
+  @@schema("public")
+}
+
+// Minimal mirror of the website's `users` table — only the identity columns
+// the scanner displays. (Other columns exist; they are simply not mapped.)
+model User {
+  id        String   @id
+  email     String   @unique
+  name      String
+  lastName  String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("participants")
+  participant Participant?
+
+  @@map("users")
+  @@schema("public")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Attendance — tables owned by THIS app, in the `checkin` Postgres schema.
+// Created by prisma/sql/001_checkin_schema.sql (applied manually, since this
+// repo must never run `prisma migrate` against the website's database).
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum SessionStatus {
+  Scheduled
+  Open
+  Closed
+
+  @@schema("checkin")
+}
+
+/// Who is expected at a session.
+enum Audience {
+  /// Every participant, e.g. the Opening Ceremony.
+  Everyone
+  /// Only the participants listed in SessionParticipant, e.g. a workshop.
+  Assigned
+
+  @@schema("checkin")
+}
+
+model Session {
+  id       String  @id @default(uuid())
+  title    String
+  location String?
+
+  startsAt DateTime @map("starts_at")
+  endsAt   DateTime @map("ends_at")
+
+  /// Who is expected: everyone, or only the assigned roster.
+  audience Audience @default(Everyone)
+
+  /// Absence / over-long breaks cost the participant's SB points.
+  mandatory Boolean @default(true)
+
+  /// Minutes a participant may be out before their SB loses points.
+  breakAllowanceMinutes Int @default(15) @map("break_allowance_minutes")
+  penaltyPoints         Int @default(5) @map("penalty_points")
+
+  status    SessionStatus @default(Scheduled)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  presences Presence[]
+  expected  SessionParticipant[]
+
+  @@index([status, startsAt])
+  @@map("sessions")
+  @@schema("checkin")
+}
+
+/// The roster of an `Assigned` session. Populated from the participants'
+/// workshop choices on the TRSYP website; empty for `Everyone` sessions.
+model SessionParticipant {
+  sessionId     String   @map("session_id")
+  participantId String   @map("participant_id")
+  addedAt       DateTime @default(now()) @map("added_at")
+
+  session     Session     @relation(fields: [sessionId], references: [id])
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@id([sessionId, participantId])
+  @@index([participantId])
+  @@map("session_participants")
+  @@schema("checkin")
+}
+
+/// One IN→OUT interval. A participant can have several per session (they may
+/// step out and come back); a partial unique index in SQL guarantees at most
+/// one OPEN interval (check_out_at IS NULL) per participant per session.
+model Presence {
+  id String @id @default(uuid())
+
+  participantId String @map("participant_id")
+  sessionId     String @map("session_id")
+
+  checkInAt  DateTime  @default(now()) @map("check_in_at")
+  checkOutAt DateTime? @map("check_out_at")
+
+  /// Free-text staff/station label, e.g. "door-A".
+  stationId String? @map("station_id")
+
+  participant Participant @relation(fields: [participantId], references: [id])
+  session     Session     @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, checkOutAt])
+  @@index([participantId, sessionId, checkInAt])
+  @@map("presences")
+  @@schema("checkin")
 }

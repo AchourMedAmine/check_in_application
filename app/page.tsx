@@ -1,89 +1,125 @@
 "use client";
 
 import { useState } from "react";
-import QRScanner from "@/components/QRScanner";
-import ScannedParticipants from "@/components/ScannedParticipants";
-import { useScannedParticipants } from "@/hooks/useScannedParticipants";
-import { Participant } from "@/lib/types";
+import SessionCard from "@/components/SessionCard";
+import ScannerSheet from "@/components/ScannerSheet";
+import { useSessions } from "@/hooks/useAttendance";
+import { useFetch } from "@/hooks/useFetch";
+import { SessionWithStats } from "@/lib/types";
 
 export default function Home() {
-  const { participants, loading, addParticipant } = useScannedParticipants();
-  const [lastScan, setLastScan] = useState<Participant | null>(null);
-  const [showFeedback, setShowFeedback] = useState(false);
+  const { sessions, loading, reload } = useSessions();
+  const { fetch } = useFetch<SessionWithStats>();
+  const [active, setActive] = useState<SessionWithStats | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
 
-  const handleScanSuccess = (participant: Participant) => {
-    setLastScan(participant);
-    setShowFeedback(true);
-    addParticipant(participant);
-
-    // Auto-hide feedback after 3 seconds
-    setTimeout(() => setShowFeedback(false), 3000);
+  // Staff open their own session when it is about to start.
+  const openAndScan = async (session: SessionWithStats) => {
+    setOpening(session.id);
+    const updated = await fetch(`/api/sessions/${session.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "Open" }),
+    });
+    setOpening(null);
+    if (updated) {
+      setActive(updated);
+      reload();
+    }
   };
 
-  const handleScanError = (error: string) => {
-    console.error("Scan error:", error);
-  };
+  const live = sessions.filter((s) => s.status === "Open");
+  const upcoming = sessions.filter((s) => s.status === "Scheduled");
+  const done = sessions.filter((s) => s.status === "Closed");
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h1 className="text-4xl font-bold">QR Code Scanner</h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Scan participant QR codes to register attendance
+    <div className="space-y-8">
+      <div className="space-y-1">
+        <h1 className="admin-heading text-2xl font-bold">Sessions</h1>
+        <p className="text-sm text-[var(--viz-ink-muted)]">
+          Tap your session to start scanning participants in and out.
         </p>
       </div>
 
-      {/* Feedback */}
-      {showFeedback && lastScan && (
-        <div className="p-4 rounded-lg text-white text-center font-semibold animate-pulse bg-green-500">
-          ✓ Participant Scanned!
-          {lastScan.name && ` (${lastScan.name})`}
+      {loading ? (
+        <div className="session-list">
+          <div className="admin-card h-48 animate-pulse" />
+          <div className="admin-card h-48 animate-pulse" />
         </div>
+      ) : sessions.length === 0 ? (
+        <div className="admin-card p-6 text-center">
+          <span className="admin-badge admin-badge--gray">No sessions</span>
+          <p className="mt-3 text-sm text-[var(--viz-ink-muted)]">
+            Add them with{" "}
+            <code className="text-[var(--color-green)]">npm run db:sessions</code>.
+          </p>
+        </div>
+      ) : (
+        <>
+          <SessionGroup label="Live now" sessions={live}>
+            {(s) => (
+              <SessionCard
+                key={s.id}
+                session={s}
+                onStart={setActive}
+                onOpen={openAndScan}
+              />
+            )}
+          </SessionGroup>
+
+          <SessionGroup label="Upcoming" sessions={upcoming}>
+            {(s) => (
+              <SessionCard
+                key={s.id}
+                session={s}
+                onStart={setActive}
+                onOpen={openAndScan}
+                busy={opening === s.id}
+              />
+            )}
+          </SessionGroup>
+
+          <SessionGroup label="Finished" sessions={done}>
+            {(s) => (
+              <SessionCard
+                key={s.id}
+                session={s}
+                onStart={setActive}
+                onOpen={openAndScan}
+              />
+            )}
+          </SessionGroup>
+        </>
       )}
 
-      {/* Scanner */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-sm">
-        <QRScanner
-          onScanSuccess={handleScanSuccess}
-          onScanError={handleScanError}
+      {active && (
+        <ScannerSheet
+          session={active}
+          onClose={() => {
+            setActive(null);
+            // Pick up everything scanned while the sheet was open.
+            reload();
+          }}
         />
-      </div>
-
-      {/* Scanned List */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-sm">
-        <ScannedParticipants participants={participants} loading={loading} />
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 text-center">
-          <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-            {participants.length}
-          </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            Total Scanned
-          </div>
-        </div>
-
-        <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-4 text-center">
-          <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-            {participants.filter((p) => p.name).length}
-          </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            With Name
-          </div>
-        </div>
-
-        <div className="bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-lg p-4 text-center">
-          <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
-            {participants.filter((p) => p.email).length}
-          </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            With Email
-          </div>
-        </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+function SessionGroup({
+  label,
+  sessions,
+  children,
+}: {
+  label: string;
+  sessions: SessionWithStats[];
+  children: (session: SessionWithStats) => React.ReactNode;
+}) {
+  if (sessions.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="session-group-label">{label}</h2>
+      <div className="session-list">{sessions.map(children)}</div>
+    </section>
   );
 }
