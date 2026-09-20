@@ -16,9 +16,11 @@ export function useFetch<T = unknown>() {
       setError(null);
 
       try {
-        const baseUrl =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-        const response = await global.fetch(`${baseUrl}${url}`, {
+        // Relative URL on purpose: it resolves against whatever origin the
+        // page is served from, so the same code works on localhost, on a
+        // Vercel preview and in production. Never prefix a hard-coded host —
+        // in the browser that would point at the visitor's own machine.
+        const response = await global.fetch(url, {
           headers: {
             "Content-Type": "application/json",
             ...options?.headers,

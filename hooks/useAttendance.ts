@@ -6,8 +6,8 @@ import { AttendanceReport, SessionWithStats } from "@/lib/types";
 
 /** Every session with its live figures, earliest first. */
 export function useSessions() {
-  const { fetch } = useFetch<SessionWithStats[]>();
-  const [sessions, setSessions] = useState<SessionWithStats[]>([]);
+  const { fetch, error } = useFetch<SessionWithStats[]>();
+  const [sessions, setSessions] = useState<SessionWithStats[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
 
@@ -17,7 +17,9 @@ export function useSessions() {
     (async () => {
       const data = await fetch("/api/sessions");
       if (cancelled) return;
-      setSessions(data ?? []);
+      // null means the request failed — kept distinct from "no sessions",
+      // so a broken API never masquerades as an empty programme.
+      setSessions(data);
       setLoading(false);
     })();
 
@@ -28,7 +30,7 @@ export function useSessions() {
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
 
-  return { sessions, loading, reload };
+  return { sessions: sessions ?? [], failed: sessions === null, loading, error, reload };
 }
 
 /** Full roster for a session, split by state. */

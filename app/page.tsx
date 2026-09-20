@@ -8,7 +8,7 @@ import { useFetch } from "@/hooks/useFetch";
 import { SessionWithStats } from "@/lib/types";
 
 export default function Home() {
-  const { sessions, loading, reload } = useSessions();
+  const { sessions, failed, loading, error, reload } = useSessions();
   const { fetch } = useFetch<SessionWithStats>();
   const [active, setActive] = useState<SessionWithStats | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
@@ -45,12 +45,27 @@ export default function Home() {
           <div className="admin-card h-48 animate-pulse" />
           <div className="admin-card h-48 animate-pulse" />
         </div>
+      ) : failed ? (
+        <div className="admin-card p-6 text-center space-y-3">
+          <span className="admin-badge admin-badge--pink">
+            Could not load sessions
+          </span>
+          <p className="text-sm text-[var(--viz-ink-muted)]">
+            {error ?? "The server did not respond."}
+          </p>
+          <button
+            type="button"
+            onClick={reload}
+            className="admin-btn-secondary px-4 py-2 text-[11px]"
+          >
+            Try again
+          </button>
+        </div>
       ) : sessions.length === 0 ? (
         <div className="admin-card p-6 text-center">
           <span className="admin-badge admin-badge--gray">No sessions</span>
           <p className="mt-3 text-sm text-[var(--viz-ink-muted)]">
-            Add them with{" "}
-            <code className="text-[var(--color-green)]">npm run db:sessions</code>.
+            The database has no sessions yet.
           </p>
         </div>
       ) : (
