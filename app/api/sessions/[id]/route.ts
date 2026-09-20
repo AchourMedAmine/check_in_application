@@ -4,6 +4,7 @@ import { handleApiRequest } from "@/lib/api-handler";
 import { ValidationError } from "@/lib/errors";
 import { getSessionOrThrow } from "@/lib/attendance/session";
 import { getSessionStats } from "@/lib/attendance/scan";
+import { closeSession } from "@/lib/attendance/close-session";
 import type { SessionStatus } from "@/generated/prisma/client";
 
 const ALLOWED: SessionStatus[] = ["Scheduled", "Open", "Closed"];
@@ -24,7 +25,19 @@ export async function PATCH(
       );
     }
 
-    await getSessionOrThrow(id);
+    const existing = await getSessionOrThrow(id);
+
+    // Closing is not just a status flip: breaks still running when the session
+    // ended have to be settled, or leaving early would cost nothing.
+    if (body.status === "Closed") {
+      const settled = await closeSession(existing);
+      const session = await getSessionOrThrow(id);
+      return {
+        ...session,
+        stats: await getSessionStats(session),
+        settled,
+      };
+    }
 
     const session = await prisma.session.update({
       where: { id },

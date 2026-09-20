@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
-import type { Presence, Session } from "@/generated/prisma/client";
+import type { Penalty, Presence, SB, Session } from "@/generated/prisma/client";
 import { evaluateBreak, type BreakEvaluation } from "./evaluate-break";
+import { settleBreaks } from "./settle";
 
 /**
  * Each participant moves through a simple state machine *per session*:
@@ -28,6 +29,8 @@ export interface ScanOutcome {
   inside: boolean;
   /** Set when a check-in ended a break: how long they were out. */
   breakTaken: BreakEvaluation | null;
+  /** Written when that break was over the allowance. */
+  penalty: Penalty | null;
   /** Set on check-out: how long they had been inside. */
   insideMinutes: number | null;
 }
@@ -37,16 +40,19 @@ export interface ScanOutcome {
  * from stored state, never from the client, so two doors cannot disagree.
  */
 export async function recordScan({
-  participantId,
+  participant,
   session,
   stationId,
   now = new Date(),
 }: {
-  participantId: string;
+  /** `sb` is snapshotted onto any penalty, so it must come from the caller. */
+  participant: { id: string; sb: SB | null };
   session: Session;
   stationId?: string;
   now?: Date;
 }): Promise<ScanOutcome> {
+  const participantId = participant.id;
+
   const open = await prisma.presence.findFirst({
     where: { participantId, sessionId: session.id, checkOutAt: null },
   });
@@ -61,6 +67,7 @@ export async function recordScan({
         presence: open,
         inside: true,
         breakTaken: null,
+        penalty: null,
         insideMinutes: null,
       };
     }
@@ -70,11 +77,16 @@ export async function recordScan({
       data: { checkOutAt: now },
     });
 
+    // Charges any OTHER break that has since gone over while this station
+    // was busy — the scan is simply the most frequent moment we get to look.
+    await settleBreaks(session, now);
+
     return {
       action: "CheckedOut",
       presence,
       inside: false,
       breakTaken: null,
+      penalty: null,
       insideMinutes: Math.max(0, Math.floor(sinceCheckIn / 60_000)),
     };
   }
@@ -94,6 +106,7 @@ export async function recordScan({
       presence: last,
       inside: false,
       breakTaken: null,
+      penalty: null,
       insideMinutes: null,
     };
   }
@@ -115,11 +128,23 @@ export async function recordScan({
     },
   });
 
+  // The penalty for the break they just ended was already owed the moment it
+  // passed the allowance, so it may exist from an earlier settle. Either way
+  // this records the final length and returns it for the banner.
+  await settleBreaks(session, now);
+  const penalty = breakTaken?.overAllowance
+    ? await prisma.penalty.findFirst({
+        where: { participantId, sessionId: session.id },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+
   return {
     action: "CheckedIn",
     presence,
     inside: true,
     breakTaken,
+    penalty,
     insideMinutes: null,
   };
 }

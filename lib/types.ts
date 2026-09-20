@@ -1,5 +1,6 @@
 import type {
   Participant as ParticipantRow,
+  Penalty,
   Presence,
   Session,
   User,
@@ -39,6 +40,8 @@ export interface ScanResult {
   inside: boolean;
   /** Set when a check-in ended a break. */
   breakTaken: BreakEvaluation | null;
+  /** Written when that break was over the allowance. */
+  penalty: Penalty | null;
   /** Set on check-out: minutes spent inside. */
   insideMinutes: number | null;
   stats: SessionStats;
@@ -60,4 +63,25 @@ export interface AttendanceReport {
   missing: Participant[];
 }
 
-export type { Presence, Session, ScanAction, SessionStats, BreakEvaluation };
+export interface BranchStanding {
+  sb: string;
+  points: number;
+  penalties: number;
+}
+
+export type PenaltyRow = Penalty & {
+  session: { title: string };
+  participant: {
+    id: string;
+    sb: string | null;
+    user: { name: string; lastName: string };
+  };
+};
+
+export interface Leaderboard {
+  standings: BranchStanding[];
+  totalPoints: number;
+  penalties: PenaltyRow[];
+}
+
+export type { Presence, Session, Penalty, ScanAction, SessionStats, BreakEvaluation };

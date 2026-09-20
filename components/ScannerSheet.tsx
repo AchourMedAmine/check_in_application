@@ -27,6 +27,12 @@ interface ScannerSheetProps {
 const SAME_CODE_COOLDOWN_MS = 3000;
 const RESULT_VISIBLE_MS = 5000;
 
+/**
+ * Breaks go over on the clock, so the roster has to move without anyone
+ * touching it. Each refresh also settles overdue breaks server-side.
+ */
+const ROSTER_POLL_MS = 30_000;
+
 /** A state change made since the roster was fetched, applied on top of it. */
 interface LocalMove {
   participant: Participant;
@@ -60,6 +66,15 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
   }, []);
+
+  // Keep the break timers and penalties current while the sheet is open.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMoves(new Map());
+      reloadAttendance();
+    }, ROSTER_POLL_MS);
+    return () => clearInterval(id);
+  }, [reloadAttendance]);
 
   const handleDecode = async (rawValue: string) => {
     const code = rawValue.trim();
@@ -167,6 +182,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
           onBreak={roster.onBreak}
           missing={roster.missing}
           breakAllowanceMinutes={session.breakAllowanceMinutes}
+          penaltyPoints={session.penaltyPoints}
           loading={report === null}
           onRefresh={() => {
             setMoves(new Map());
@@ -224,6 +240,13 @@ function ScanBanner({ result }: { result: ScanResult }) {
           {result.breakTaken.overAllowance
             ? ` — ${result.breakTaken.minutesOver} min over the ${allowance} min allowance`
             : ` — within the ${allowance} min allowance`}
+        </span>
+      )}
+
+      {result.penalty && (
+        <span className="scan-result-penalty">
+          −{result.penalty.points} points
+          {result.participant.sb ? ` · ${result.participant.sb}` : ""}
         </span>
       )}
 

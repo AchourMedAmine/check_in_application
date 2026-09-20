@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { handleApiRequest } from "@/lib/api-handler";
 import { getSessionOrThrow } from "@/lib/attendance/session";
+import { settleBreaks } from "@/lib/attendance/settle";
 
 const withUser = {
   user: { select: { id: true, email: true, name: true, lastName: true } },
@@ -16,6 +17,10 @@ export async function GET(
   return handleApiRequest(async () => {
     const { id } = await ctx.params;
     const session = await getSessionOrThrow(id);
+
+    // Breaks go over on the clock, not on a scan. Settling here means the
+    // roster staff are looking at is also what charges the points.
+    if (session.status === "Open") await settleBreaks(session);
 
     const presences = await prisma.presence.findMany({
       where: { sessionId: session.id },

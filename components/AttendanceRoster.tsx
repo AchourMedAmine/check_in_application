@@ -9,6 +9,8 @@ interface AttendanceRosterProps {
   missing: Participant[];
   /** Minutes a break may last before it counts against the SB. */
   breakAllowanceMinutes: number;
+  /** Points the SB loses once a break goes over. */
+  penaltyPoints: number;
   onRefresh: () => void;
   /** True until the first report has arrived. */
   loading?: boolean;
@@ -28,6 +30,7 @@ export default function AttendanceRoster({
   onBreak,
   missing,
   breakAllowanceMinutes,
+  penaltyPoints,
   onRefresh,
   loading = false,
 }: AttendanceRosterProps) {
@@ -84,7 +87,7 @@ export default function AttendanceRoster({
                   over ? "admin-badge--pink" : "admin-badge--amber"
                 }`}
               >
-                {over ? "Over break" : "Checked out"}
+                {over ? `−${penaltyPoints} over break` : "Checked out"}
               </span>
             </>
           );

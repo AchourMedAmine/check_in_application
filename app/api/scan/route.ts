@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     }
 
     const outcome = await recordScan({
-      participantId: participant.id,
+      participant,
       session,
       stationId: body.stationId,
     });

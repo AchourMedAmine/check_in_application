@@ -201,6 +201,34 @@ button {
   white-space: nowrap;
 }
 
+/* Ranked horizontal bars (standings) */
+.viz-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.viz-bar-row {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.viz-bar-label {
+  color: rgba(255, 255, 255, 0.7);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-bar-value {
+  text-align: right;
+  color: var(--color-pink);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Session card (tap to start scanning) ────────────── */
 
 .session-card {
@@ -505,6 +533,21 @@ button {
 
 .scan-result-break--over strong {
   color: var(--color-pink);
+}
+
+/* The deduction itself — the one thing staff must not miss. */
+.scan-result-penalty {
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-pink);
+  background: rgba(255, 29, 120, 0.12);
+  border: 1px solid rgba(255, 29, 120, 0.4);
 }
 
 .scan-error {

@@ -148,6 +148,7 @@ model Participant {
   user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   presences Presence[]
   sessions  SessionParticipant[]
+  penalties Penalty[]
 
   @@index([userId])
   @@map("participants")
@@ -219,9 +220,56 @@ model Session {
 
   presences Presence[]
   expected  SessionParticipant[]
+  penalties Penalty[]
 
   @@index([status, startsAt])
   @@map("sessions")
+  @@schema("checkin")
+}
+
+/// Why points were taken off a student branch.
+enum PenaltyReason {
+  /// A break longer than the session allowance.
+  OverBreak
+  /// Left and never came back — charged when the session was closed.
+  LeftEarly
+
+  @@schema("checkin")
+}
+
+/// One over-long break, charged to the participant's student branch.
+/// Append-only: the leaderboard is SUM(points) GROUP BY sb.
+model Penalty {
+  id String @id @default(uuid())
+
+  participantId String @map("participant_id")
+  sessionId     String @map("session_id")
+
+  /// The interval this penalty hangs off: for OverBreak the one whose
+  /// check-in ended the break, for LeftEarly the one they left from.
+  presenceId String @map("presence_id")
+
+  /// Snapshots taken when the penalty was charged — never re-derived, so
+  /// later edits to a participant's SB or a session's points cannot rewrite
+  /// history.
+  sb           SB?
+  breakMinutes Int @map("break_minutes")
+  points       Int
+
+  reason    PenaltyReason @default(OverBreak)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  participant Participant @relation(fields: [participantId], references: [id])
+  session     Session     @relation(fields: [sessionId], references: [id])
+  presence    Presence    @relation(fields: [presenceId], references: [id])
+
+  /// A retry, a double scan, or a re-run of closeSession can never charge
+  /// the same break twice.
+  @@unique([presenceId, reason])
+  @@index([sb])
+  @@index([sessionId])
+  @@index([participantId])
+  @@map("penalties")
   @@schema("checkin")
 }
 
@@ -258,6 +306,7 @@ model Presence {
 
   participant Participant @relation(fields: [participantId], references: [id])
   session     Session     @relation(fields: [sessionId], references: [id])
+  penalties   Penalty[]
 
   @@index([sessionId, checkOutAt])
   @@index([participantId, sessionId, checkInAt])

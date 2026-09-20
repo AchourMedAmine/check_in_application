@@ -61,3 +61,24 @@ test("the allowance is per session, not global", () => {
   });
   assert.equal(generous.overAllowance, false);
 });
+
+// ── What the penalty depends on ──────────────────────────────────────────
+// A penalty is written exactly when `overAllowance` is true, so these cases
+// are the boundary between "no points lost" and "the branch is charged".
+
+test("a break one second over the allowance is still not over", () => {
+  // 15m00s is within, and part-minutes floor, so 15m59s is still 15 minutes.
+  const r = run(base, plus(15, 59));
+  assert.equal(r.breakMinutes, 15);
+  assert.equal(r.overAllowance, false, "must not charge for a rounded minute");
+});
+
+test("the first minute that charges is 16", () => {
+  assert.equal(run(base, plus(16)).overAllowance, true);
+});
+
+test("a very long absence is reported in full, not capped", () => {
+  const r = run(base, plus(140));
+  assert.equal(r.breakMinutes, 140);
+  assert.equal(r.minutesOver, 125);
+});

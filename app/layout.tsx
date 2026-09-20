@@ -35,7 +35,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               </span>
             </div>
             <div className="admin-header-right">
-              <span className="admin-header-name">Staff scanner</span>
+              {/* A plain anchor, not <Link>: the root layout is also rendered
+                  for the global error page, which has no router context. */}
+              <a href="/standings" className="admin-header-name hover:text-white">
+                Standings
+              </a>
               <SignOutButton />
             </div>
           </div>
