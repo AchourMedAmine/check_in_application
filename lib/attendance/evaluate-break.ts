@@ -44,3 +44,18 @@ export function evaluateBreak({
     minutesOver: overAllowance ? breakMinutes - allowanceMinutes : 0,
   };
 }
+
+/**
+ * When a session being closed is considered to have ended: the moment it is
+ * closed, but never later than its scheduled `ends_at`.
+ *
+ *  - Closed early or on time → now. Someone five minutes into a break when
+ *    the session ends is within the allowance and owes nothing; measuring to
+ *    a scheduled end still hours away would bill them for time that never
+ *    happened.
+ *  - Closed late (nobody pressed the button) → ends_at. Time after the
+ *    session should have finished costs nobody anything.
+ */
+export function sessionEndedAt(endsAt: Date, closedAt: Date): Date {
+  return closedAt < endsAt ? closedAt : endsAt;
+}

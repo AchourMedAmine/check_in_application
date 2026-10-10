@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateBreak } from "../lib/attendance/evaluate-break";
+import { evaluateBreak, sessionEndedAt } from "../lib/attendance/evaluate-break";
 
 const ALLOWANCE = 15;
 const base = new Date(Date.UTC(2026, 0, 1, 12, 0, 0));
@@ -81,4 +81,35 @@ test("a very long absence is reported in full, not capped", () => {
   const r = run(base, plus(140));
   assert.equal(r.breakMinutes, 140);
   assert.equal(r.minutesOver, 125);
+});
+
+// ── Closing a session ────────────────────────────────────────────────────
+
+test("closing early ends the session at the moment it is closed", () => {
+  const endsAt = plus(120);
+  assert.deepEqual(sessionEndedAt(endsAt, plus(30)), plus(30));
+});
+
+test("closing late ends the session at its scheduled end", () => {
+  const endsAt = plus(120);
+  assert.deepEqual(sessionEndedAt(endsAt, plus(600)), endsAt);
+});
+
+test("a break 5 minutes old when the session is closed early is not charged", () => {
+  // Left at 0, session closed at 5, although scheduled to run to 120.
+  const end = sessionEndedAt(plus(120), plus(5));
+  assert.equal(run(base, end).overAllowance, false);
+  assert.equal(run(base, end).breakMinutes, 5);
+});
+
+test("a break past the allowance when the session is closed is charged", () => {
+  const end = sessionEndedAt(plus(120), plus(16));
+  assert.equal(run(base, end).overAllowance, true);
+});
+
+test("time after the scheduled end never counts, however late the close", () => {
+  // Left 5 minutes before the end; nobody closed it until hours later.
+  const end = sessionEndedAt(plus(120), plus(600));
+  assert.equal(run(plus(115), end).breakMinutes, 5);
+  assert.equal(run(plus(115), end).overAllowance, false);
 });
