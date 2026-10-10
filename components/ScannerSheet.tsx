@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useFetch } from "@/hooks/useFetch";
 import { useAttendance } from "@/hooks/useAttendance";
 import AttendanceRoster from "@/components/AttendanceRoster";
+import { acceptRead, type SeenBadges } from "@/lib/scan-gate";
 import {
   Participant,
   RosterParticipant,
@@ -23,8 +24,6 @@ interface ScannerSheetProps {
   onClose: () => void;
 }
 
-/** Ignore the same code re-detected within this window (camera keeps seeing it). */
-const SAME_CODE_COOLDOWN_MS = 3000;
 const RESULT_VISIBLE_MS = 5000;
 
 /**
@@ -48,7 +47,8 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
   // Scans since the roster was fetched. Applying them locally avoids
   // re-downloading the whole roster after every single scan.
   const [moves, setMoves] = useState<Map<string, LocalMove>>(new Map());
-  const lastScanRef = useRef<{ code: string; at: number } | null>(null);
+  // When the camera last saw each badge — see lib/scan-gate.ts.
+  const seenRef = useRef<SeenBadges>(new Map());
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Escape closes the scanner
@@ -80,22 +80,24 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
     const code = rawValue.trim();
     if (!code || loading) return;
 
-    const last = lastScanRef.current;
-    if (
-      last &&
-      last.code === code &&
-      Date.now() - last.at < SAME_CODE_COOLDOWN_MS
-    ) {
-      return;
-    }
-    lastScanRef.current = { code, at: Date.now() };
+    // A badge held in front of the camera is read over and over; it counts
+    // once, until it has left the frame.
+    if (!acceptRead(seenRef.current, code, Date.now())) return;
 
     const scan = await fetch("/api/scan", {
       method: "POST",
       body: JSON.stringify({ qrCode: code, sessionId: session.id }),
     });
 
-    if (!scan) return;
+    if (!scan) {
+      // Nothing was recorded — let the very same badge try again at once.
+      seenRef.current.delete(code);
+      return;
+    }
+    // The camera is paused while the request runs, so it could not keep
+    // seeing the badge. Count it as still in view now — a slow network must
+    // not make a held badge look as if it had left the frame.
+    seenRef.current.set(code, Date.now());
 
     setResult(scan);
     if (scan.stats) setStats(scan.stats);
@@ -195,8 +197,8 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
           />
 
           <p className="scan-hint">
-            Each scan switches the person between inside and out. A second
-            scan within 10 seconds is ignored.
+            Each scan switches the person between inside and out. To scan
+            the same badge again, take it out of the frame first.
           </p>
         </div>
       </div>
