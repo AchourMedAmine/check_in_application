@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { STAFF_COOKIE, isStaffToken } from "@/lib/auth";
+import { SESSION_COOKIE, readSession } from "@/lib/auth";
 
 /**
- * Gates the whole scanner behind the staff PIN. Everything except the login
- * screen and its endpoints needs a valid cookie.
+ * Gates the whole app behind a scanner sign-in. Everything except the login
+ * screen and its endpoints needs a validly signed, unexpired cookie.
+ *
+ * This is the optimistic check only — no database. Every API route then
+ * re-checks the account itself (lib/scanners.ts → requireScanner), which is
+ * where disabled accounts and the Manager role are enforced.
  */
 export async function proxy(request: NextRequest) {
-  const token = request.cookies.get(STAFF_COOKIE)?.value;
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
 
-  if (await isStaffToken(token)) {
+  if (await readSession(token)) {
     return NextResponse.next();
   }
 

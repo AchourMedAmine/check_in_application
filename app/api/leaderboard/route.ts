@@ -3,11 +3,13 @@ import { prisma } from "@/lib/db";
 import { handleApiRequest } from "@/lib/api-handler";
 import { getLeaderboard } from "@/lib/attendance/close-session";
 import { settleBreaks } from "@/lib/attendance/settle";
+import { requireScanner } from "@/lib/scanners";
 
 // GET /api/leaderboard[?sessionId=...]
 // Points lost per student branch, with the individual deductions behind them.
 export async function GET(req: NextRequest) {
   return handleApiRequest(async () => {
+    await requireScanner(req);
     const sessionId =
       req.nextUrl.searchParams.get("sessionId") ?? undefined;
 

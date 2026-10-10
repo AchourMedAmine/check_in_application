@@ -85,4 +85,12 @@ export interface Leaderboard {
   penalties: PenaltyRow[];
 }
 
+/** The signed-in account, as /api/auth/me returns it. */
+export interface ScannerProfile {
+  id: string;
+  username: string;
+  displayName: string;
+  role: "Scanner" | "Manager";
+}
+
 export type { Presence, Session, Penalty, ScanAction, SessionStats, BreakEvaluation };

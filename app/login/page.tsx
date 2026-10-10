@@ -14,13 +14,14 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const [pin, setPin] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pin.trim() || busy) return;
+    if (!username.trim() || !password || busy) return;
 
     setBusy(true);
     setError(null);
@@ -28,7 +29,7 @@ function LoginForm() {
     const res = await global.fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pin }),
+      body: JSON.stringify({ username, password }),
     });
 
     setBusy(false);
@@ -36,12 +37,17 @@ function LoginForm() {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setError(body.error ?? "Sign in failed");
-      setPin("");
+      setPassword("");
       return;
     }
 
+    // Only ever return to a path on this site: "//evil.example" or a full
+    // URL in ?next= would turn the login page into an open redirect.
+    const next = params.get("next");
+    const safeNext = next?.startsWith("/") && !next.startsWith("//") ? next : "/";
+
     // Full navigation so the proxy re-runs with the new cookie.
-    router.replace(params.get("next") || "/");
+    router.replace(safeNext);
     router.refresh();
   };
 
@@ -53,24 +59,39 @@ function LoginForm() {
             TRSYP<span style={{ color: "var(--color-green)" }}> CHECK-IN</span>
           </h1>
           <p className="text-sm text-[var(--viz-ink-muted)]">
-            Staff access only
+            Sign in with your scanner account
           </p>
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="pin" className="viz-tile-label block">
-            Staff PIN
+          <label htmlFor="username" className="viz-tile-label block">
+            Username
           </label>
           <input
-            id="pin"
-            type="password"
-            inputMode="numeric"
-            autoComplete="one-time-code"
+            id="username"
+            type="text"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             autoFocus
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            className="admin-input w-full px-4 py-3 text-center text-lg tracking-[0.3em]"
-            placeholder="••••••"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="admin-input w-full px-4 py-3 text-lg"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="password" className="viz-tile-label block">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="admin-input w-full px-4 py-3 text-lg"
           />
         </div>
 
@@ -78,7 +99,7 @@ function LoginForm() {
 
         <button
           type="submit"
-          disabled={busy || !pin.trim()}
+          disabled={busy || !username.trim() || !password}
           className="admin-btn-primary w-full px-4 py-3 text-xs"
         >
           {busy ? "Checking…" : "Sign in"}

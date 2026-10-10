@@ -5,6 +5,7 @@ import { ScanQRInput } from "@/lib/types";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { getActiveSession, getSessionOrThrow } from "@/lib/attendance/session";
 import { recordScan, getSessionStats } from "@/lib/attendance/scan";
+import { requireScanner } from "@/lib/scanners";
 
 // name / lastName / email live on `users`, joined via participants.user_id
 const withUser = {
@@ -15,6 +16,7 @@ const withUser = {
 // Body: { qrCode: "<participant id>", sessionId?, stationId? }
 export async function POST(req: NextRequest) {
   return handleApiRequest(async () => {
+    const scanner = await requireScanner(req);
     const body = (await req.json()) as ScanQRInput;
     const id = body.qrCode?.trim();
 
@@ -42,6 +44,7 @@ export async function POST(req: NextRequest) {
     const outcome = await recordScan({
       participant,
       session,
+      scannerId: scanner.id,
       stationId: body.stationId,
     });
 
@@ -70,6 +73,7 @@ export async function POST(req: NextRequest) {
 // GET /api/scan — all registered participants (handy for testing without badges)
 export async function GET(req: NextRequest) {
   return handleApiRequest(async () => {
+    await requireScanner(req);
     return prisma.participant.findMany({
       include: withUser,
       orderBy: { user: { lastName: "asc" } },

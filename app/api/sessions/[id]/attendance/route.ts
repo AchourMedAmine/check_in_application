@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { handleApiRequest } from "@/lib/api-handler";
 import { getSessionOrThrow } from "@/lib/attendance/session";
 import { settleBreaks } from "@/lib/attendance/settle";
+import { requireScanner } from "@/lib/scanners";
 
 const withUser = {
   user: { select: { id: true, email: true, name: true, lastName: true } },
@@ -15,6 +16,7 @@ export async function GET(
   ctx: RouteContext<"/api/sessions/[id]/attendance">
 ) {
   return handleApiRequest(async () => {
+    await requireScanner(req);
     const { id } = await ctx.params;
     const session = await getSessionOrThrow(id);
 

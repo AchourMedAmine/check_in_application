@@ -49,12 +49,15 @@ export interface ScanOutcome {
 export async function recordScan({
   participant,
   session,
+  scannerId,
   stationId,
   now = new Date(),
 }: {
   /** `sb` is snapshotted onto any penalty, so it must come from the caller. */
   participant: { id: string; sb: SB | null };
   session: Session;
+  /** The signed-in account doing the scan, kept on the presence row. */
+  scannerId?: string;
   stationId?: string;
   now?: Date;
 }): Promise<ScanOutcome> {
@@ -72,7 +75,7 @@ export async function recordScan({
       throw new ValidationError(`Session "${session.title}" is not open`);
     }
 
-    return applyScan(tx, participant.id, session, now, stationId);
+    return applyScan(tx, participant.id, session, now, { scannerId, stationId });
   }, TX_OPTIONS);
 }
 
@@ -81,7 +84,7 @@ async function applyScan(
   participantId: string,
   session: Session,
   now: Date,
-  stationId: string | undefined
+  by: { scannerId?: string; stationId?: string }
 ): Promise<ScanOutcome> {
   const open = await tx.presence.findFirst({
     where: { participantId, sessionId: session.id, checkOutAt: null },
@@ -104,7 +107,7 @@ async function applyScan(
 
     const presence = await tx.presence.update({
       where: { id: open.id },
-      data: { checkOutAt: now },
+      data: { checkOutAt: now, checkOutScannerId: by.scannerId },
     });
 
     return {
@@ -150,7 +153,8 @@ async function applyScan(
       participantId,
       sessionId: session.id,
       checkInAt: now,
-      stationId,
+      checkInScannerId: by.scannerId,
+      stationId: by.stationId,
     },
   });
 

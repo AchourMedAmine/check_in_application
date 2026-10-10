@@ -5,26 +5,46 @@ import SessionCard from "@/components/SessionCard";
 import ScannerSheet from "@/components/ScannerSheet";
 import { useSessions } from "@/hooks/useAttendance";
 import { useFetch } from "@/hooks/useFetch";
+import { useMe } from "@/hooks/useMe";
 import { SessionWithStats } from "@/lib/types";
 
 export default function Home() {
   const { sessions, failed, loading, error, reload } = useSessions();
-  const { fetch } = useFetch<SessionWithStats>();
+  const { fetch, error: actionError } = useFetch<SessionWithStats>();
+  const me = useMe();
+  const canManage = me?.role === "Manager";
   const [active, setActive] = useState<SessionWithStats | null>(null);
-  const [opening, setOpening] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  // Staff open their own session when it is about to start.
+  // A manager opens a session when it is about to start.
   const openAndScan = async (session: SessionWithStats) => {
-    setOpening(session.id);
+    setBusyId(session.id);
     const updated = await fetch(`/api/sessions/${session.id}`, {
       method: "PATCH",
       body: JSON.stringify({ status: "Open" }),
     });
-    setOpening(null);
+    setBusyId(null);
     if (updated) {
       setActive(updated);
       reload();
     }
+  };
+
+  // Closing settles every break still running as LeftEarly — confirm first.
+  const endSession = async (session: SessionWithStats) => {
+    const sure = window.confirm(
+      `Close "${session.title}"?\n\nScanning stops, and everyone still out on a break ` +
+        `is charged as having left early. This cannot be undone.`
+    );
+    if (!sure) return;
+
+    setBusyId(session.id);
+    await fetch(`/api/sessions/${session.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "Closed" }),
+    });
+    setBusyId(null);
+    reload();
   };
 
   const live = sessions.filter((s) => s.status === "Open");
@@ -39,6 +59,8 @@ export default function Home() {
           Tap your session to start scanning participants in and out.
         </p>
       </div>
+
+      {actionError && <div className="scan-error">{actionError}</div>}
 
       {loading ? (
         <div className="session-list">
@@ -77,6 +99,9 @@ export default function Home() {
                 session={s}
                 onStart={setActive}
                 onOpen={openAndScan}
+                onEnd={endSession}
+                canManage={canManage}
+                busy={busyId === s.id}
               />
             )}
           </SessionGroup>
@@ -88,7 +113,9 @@ export default function Home() {
                 session={s}
                 onStart={setActive}
                 onOpen={openAndScan}
-                busy={opening === s.id}
+                onEnd={endSession}
+                canManage={canManage}
+                busy={busyId === s.id}
               />
             )}
           </SessionGroup>
@@ -100,6 +127,8 @@ export default function Home() {
                 session={s}
                 onStart={setActive}
                 onOpen={openAndScan}
+                onEnd={endSession}
+                canManage={canManage}
               />
             )}
           </SessionGroup>

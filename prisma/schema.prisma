@@ -304,6 +304,10 @@ model Presence {
   /// Free-text staff/station label, e.g. "door-A".
   stationId String? @map("station_id")
 
+  /// The scanner accounts that recorded the check-in and the check-out.
+  checkInScannerId  String? @map("check_in_scanner_id")
+  checkOutScannerId String? @map("check_out_scanner_id")
+
   participant Participant @relation(fields: [participantId], references: [id])
   session     Session     @relation(fields: [sessionId], references: [id])
   penalties   Penalty[]
@@ -311,5 +315,40 @@ model Presence {
   @@index([sessionId, checkOutAt])
   @@index([participantId, sessionId, checkInAt])
   @@map("presences")
+  @@schema("checkin")
+}
+
+/// What a scanner account may do.
+enum ScannerRole {
+  /// Scans badges and reads the roster.
+  Scanner
+  /// Also opens and closes sessions — closing is what charges LeftEarly.
+  Manager
+
+  @@schema("checkin")
+}
+
+/// A person allowed to use the app. Created by prisma/sql/004_scanners.sql;
+/// accounts are managed with `npm run scanners`.
+model Scanner {
+  id           String      @id @default(uuid())
+  /// Always lower-case.
+  username     String      @unique(map: "scanners_username_key")
+  displayName  String      @map("display_name")
+  passwordHash String      @map("password_hash")
+  role         ScannerRole @default(Scanner)
+  active       Boolean     @default(true)
+
+  /// Part of the signed cookie; bumping it signs out every device.
+  sessionVersion Int       @default(0) @map("session_version")
+
+  failedLogins Int       @default(0) @map("failed_logins")
+  lockedUntil  DateTime? @map("locked_until")
+  lastLoginAt  DateTime? @map("last_login_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("scanners")
   @@schema("checkin")
 }

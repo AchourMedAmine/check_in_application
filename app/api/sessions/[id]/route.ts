@@ -5,17 +5,20 @@ import { ValidationError } from "@/lib/errors";
 import { getSessionOrThrow } from "@/lib/attendance/session";
 import { getSessionStats } from "@/lib/attendance/scan";
 import { closeSession } from "@/lib/attendance/close-session";
+import { requireScanner } from "@/lib/scanners";
 import type { SessionStatus } from "@/generated/prisma/client";
 
 const ALLOWED: SessionStatus[] = ["Scheduled", "Open", "Closed"];
 
-// PATCH /api/sessions/[id] — open or close a session.
+// PATCH /api/sessions/[id] — open or close a session. Managers only:
+// closing charges every LeftEarly penalty, so it is not a door-volunteer job.
 // Body: { status: "Open" | "Closed" | "Scheduled" }
 export async function PATCH(
   req: NextRequest,
   ctx: RouteContext<"/api/sessions/[id]">
 ) {
   return handleApiRequest(async () => {
+    await requireScanner(req, { role: "Manager" });
     const { id } = await ctx.params;
     const body = (await req.json()) as { status?: SessionStatus };
 

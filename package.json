@@ -11,6 +11,7 @@
     "db:generate": "prisma generate",
     "db:apply": "node scripts/apply-sql.mjs",
     "db:sessions": "tsx prisma/seed-sessions.ts",
+    "scanners": "tsx scripts/scanners.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "next typegen && tsc --noEmit"
   },

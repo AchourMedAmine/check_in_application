@@ -9,6 +9,10 @@ interface SessionCardProps {
   onStart: (session: SessionWithStats) => void;
   /** Tapped while Scheduled — opens the session, then starts scanning. */
   onOpen: (session: SessionWithStats) => void;
+  /** Ends an Open session and charges the breaks still running. */
+  onEnd: (session: SessionWithStats) => void;
+  /** Managers open and close sessions; scanners only scan. */
+  canManage: boolean;
   busy?: boolean;
 }
 
@@ -16,6 +20,8 @@ export default function SessionCard({
   session,
   onStart,
   onOpen,
+  onEnd,
+  canManage,
   busy = false,
 }: SessionCardProps) {
   const { inside, onBreak, missing, total, unexpected } = session.stats;
@@ -130,7 +136,7 @@ export default function SessionCard({
 
   // Open → the whole card starts scanning.
   if (isOpen) {
-    return (
+    const card = (
       <button
         type="button"
         className="admin-card session-card p-6 space-y-4"
@@ -140,6 +146,23 @@ export default function SessionCard({
         <div className="session-card-cta">Tap to start scanning</div>
       </button>
     );
+
+    if (!canManage) return card;
+
+    // A sibling, not inside the card: a button can't hold another button.
+    return (
+      <div className="session-card-stack">
+        {card}
+        <button
+          type="button"
+          className="admin-btn-secondary session-end-btn"
+          onClick={() => onEnd(session)}
+          disabled={busy}
+        >
+          {busy ? "Closing…" : "Close session"}
+        </button>
+      </div>
+    );
   }
 
   // Scheduled → opening it is a deliberate act, so it gets its own button.
@@ -148,16 +171,19 @@ export default function SessionCard({
       className={`admin-card p-6 space-y-4 ${isClosed ? "session-card--closed" : ""}`}
     >
       {body}
-      {!isClosed && (
-        <button
-          type="button"
-          className="admin-btn-primary session-open-btn"
-          onClick={() => onOpen(session)}
-          disabled={busy}
-        >
-          {busy ? "Opening…" : "Open & start scanning"}
-        </button>
-      )}
+      {!isClosed &&
+        (canManage ? (
+          <button
+            type="button"
+            className="admin-btn-primary session-open-btn"
+            onClick={() => onOpen(session)}
+            disabled={busy}
+          >
+            {busy ? "Opening…" : "Open & start scanning"}
+          </button>
+        ) : (
+          <p className="session-card-cta">A manager opens this session</p>
+        ))}
     </div>
   );
 }

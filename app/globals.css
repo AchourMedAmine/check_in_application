@@ -287,6 +287,18 @@ button {
   opacity: 0.55;
 }
 
+.session-card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-end-btn {
+  width: 100%;
+  padding: 10px;
+  font-size: 11px;
+}
+
 .session-open-btn {
   margin-top: 4px;
   width: 100%;
