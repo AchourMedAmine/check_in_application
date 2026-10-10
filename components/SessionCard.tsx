@@ -1,192 +1,191 @@
 "use client";
 
+import { format } from "date-fns";
 import { SessionWithStats } from "@/lib/types";
-import { format, isSameDay } from "date-fns";
 
-interface SessionCardProps {
-  session: SessionWithStats;
-  /** Tapped while Open — starts scanning. */
+interface SessionActions {
+  /** Open session → start scanning. */
   onStart: (session: SessionWithStats) => void;
-  /** Tapped while Scheduled — opens the session, then starts scanning. */
+  /** Scheduled session → open it, then start scanning. */
   onOpen: (session: SessionWithStats) => void;
-  /** Ends an Open session and charges the breaks still running. */
+  /** Open session → end it and charge the breaks still running. */
   onEnd: (session: SessionWithStats) => void;
   /** Managers open and close sessions; scanners only scan. */
   canManage: boolean;
   busy?: boolean;
 }
 
-export default function SessionCard({
+const hm = (iso: Date | string) => format(new Date(iso), "HH:mm");
+
+/** Room and time, each on its own terms rather than joined into one string. */
+function where(session: SessionWithStats) {
+  const time = `${hm(session.startsAt)}–${hm(session.endsAt)}`;
+  return session.location ? `${session.location}, ${time}` : time;
+}
+
+/**
+ * The session being scanned right now: the one big panel on the page, with
+ * the live count and the button staff reach for.
+ */
+export function LiveSession({
   session,
   onStart,
-  onOpen,
   onEnd,
   canManage,
   busy = false,
-}: SessionCardProps) {
-  const { inside, onBreak, missing, total, unexpected } = session.stats;
-  const isOpen = session.status === "Open";
-  const isClosed = session.status === "Closed";
+}: { session: SessionWithStats } & SessionActions) {
+  const { inside, onBreak, missing, total } = session.stats;
   const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
 
-  const starts = new Date(session.startsAt);
-  const ends = new Date(session.endsAt);
-  const when = isSameDay(starts, ends)
-    ? `${format(starts, "PP p")} – ${format(ends, "p")}`
-    : `${format(starts, "PP p")} – ${format(ends, "PP p")}`;
-
-  const body = (
-    <>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`admin-badge ${
-                isOpen
-                  ? "admin-badge--green"
-                  : isClosed
-                    ? "admin-badge--gray"
-                    : "admin-badge--amber"
-              }`}
-            >
-              {session.status}
-            </span>
-            <span
-              className={`admin-badge ${
-                session.audience === "Everyone"
-                  ? "admin-badge--pink"
-                  : "admin-badge--gray"
-              }`}
-            >
-              {session.audience === "Everyone" ? "All participants" : "Assigned"}
-            </span>
-            {!session.mandatory && (
-              <span className="admin-badge admin-badge--gray">Attendance only</span>
-            )}
-          </div>
-
-          <h2 className="admin-heading text-xl font-bold">{session.title}</h2>
-
-          <p className="text-sm text-[var(--viz-ink-muted)]">
-            {session.location ? `${session.location} · ` : ""}
-            {when}
-          </p>
+  return (
+    <section className="live" aria-labelledby={`live-${session.id}`}>
+      <div className="live-head">
+        <div className="min-w-0">
+          <span className="live-flag">
+            <span className="dia dia--green" aria-hidden />
+            Live now
+          </span>
+          <h2 id={`live-${session.id}`} className="live-title mt-2">
+            {session.title}
+          </h2>
+          <p className="live-where">{where(session)}</p>
         </div>
 
-        <div className="text-right">
-          <div className="viz-tile-label">In the room</div>
-          <div className="viz-meter-value">
-            {inside}
-            <span className="viz-meter-total"> / {total}</span>
-          </div>
+        <div className="live-count">
+          <span className="live-count-value">{inside}</span>
+          {total > 0 && <span className="live-count-total"> / {total}</span>}
+          <div className="live-count-label">in the room</div>
         </div>
       </div>
 
-      {total === 0 ? (
-        <p className="text-xs text-[var(--viz-ink-faint)]">
-          No roster yet — the expected participants haven&apos;t been assigned.
-        </p>
-      ) : (
-        <>
+      {total > 0 ? (
+        <div>
           <div
-            className="viz-sharebar"
+            className="share"
             role="img"
-            aria-label={`${inside} inside, ${onBreak} on break, ${missing} not scanned yet`}
+            aria-label={`${inside} inside, ${onBreak} on a break, ${missing} not scanned yet`}
           >
             <span
-              className="viz-sharebar-seg"
-              style={{ width: `${pct(inside)}%`, background: "var(--viz-1)" }}
+              style={{ width: `${pct(inside)}%`, background: "var(--green)" }}
             />
             <span
-              className="viz-sharebar-seg"
-              style={{ width: `${pct(onBreak)}%`, background: "var(--viz-4)" }}
-            />
-            <span
-              className="viz-sharebar-seg"
-              style={{
-                width: `${pct(missing)}%`,
-                background: "var(--viz-track)",
-              }}
+              style={{ width: `${pct(onBreak)}%`, background: "var(--amber)" }}
             />
           </div>
-
-          <div className="viz-footnote">
-            <span className="viz-legend-item">
-              <span className="viz-swatch" style={{ background: "var(--viz-1)" }} />
-              {inside} inside
+          <div className="legend">
+            <span>
+              <span className="dia dia--green" aria-hidden />
+              <strong>{inside}</strong> inside
             </span>
-            <span className="viz-legend-item">
-              <span className="viz-swatch" style={{ background: "var(--viz-4)" }} />
-              {onBreak} on break
+            <span>
+              <span className="dia dia--amber" aria-hidden />
+              <strong>{onBreak}</strong> on a break
             </span>
-            <span className="viz-legend-item">
-              <span
-                className="viz-swatch"
-                style={{ background: "var(--viz-track)" }}
-              />
-              {missing} not scanned
+            <span>
+              <span className="dia dia--faint" aria-hidden />
+              <strong>{missing}</strong> not scanned yet
             </span>
-            {unexpected > 0 && (
-              <span className="viz-legend-item" style={{ color: "var(--color-pink)" }}>
-                {unexpected} not on roster
-              </span>
-            )}
           </div>
-        </>
+        </div>
+      ) : (
+        <p className="text-sm text-[var(--ink-2)]">
+          No roster yet, so everyone scanned counts as a walk-in.
+        </p>
       )}
-    </>
-  );
 
-  // Open → the whole card starts scanning.
-  if (isOpen) {
-    const card = (
-      <button
-        type="button"
-        className="admin-card session-card p-6 space-y-4"
-        onClick={() => onStart(session)}
-      >
-        {body}
-        <div className="session-card-cta">Tap to start scanning</div>
-      </button>
-    );
-
-    if (!canManage) return card;
-
-    // A sibling, not inside the card: a button can't hold another button.
-    return (
-      <div className="session-card-stack">
-        {card}
+      <div className="live-actions">
         <button
           type="button"
-          className="admin-btn-secondary session-end-btn"
-          onClick={() => onEnd(session)}
-          disabled={busy}
+          className="btn btn--primary"
+          onClick={() => onStart(session)}
         >
-          {busy ? "Closing…" : "Close session"}
+          Start scanning
         </button>
-      </div>
-    );
-  }
-
-  // Scheduled → opening it is a deliberate act, so it gets its own button.
-  return (
-    <div
-      className={`admin-card p-6 space-y-4 ${isClosed ? "session-card--closed" : ""}`}
-    >
-      {body}
-      {!isClosed &&
-        (canManage ? (
+        {canManage && (
           <button
             type="button"
-            className="admin-btn-primary session-open-btn"
-            onClick={() => onOpen(session)}
+            className="btn btn--danger"
+            onClick={() => onEnd(session)}
             disabled={busy}
           >
-            {busy ? "Opening…" : "Open & start scanning"}
+            {busy ? "Closing…" : "Close session"}
           </button>
-        ) : (
-          <p className="session-card-cta">A manager opens this session</p>
-        ))}
-    </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** One line of the programme. */
+export function AgendaRow({
+  session,
+  onStart,
+  onOpen,
+  canManage,
+  busy = false,
+}: { session: SessionWithStats } & SessionActions) {
+  const isOpen = session.status === "Open";
+  const isClosed = session.status === "Closed";
+  const { inside, onBreak, total } = session.stats;
+  const came = inside + onBreak;
+
+  return (
+    <li className={`agenda-row ${isClosed ? "agenda-row--closed" : ""}`}>
+      <div className="agenda-time">
+        <div className="agenda-time-start">{hm(session.startsAt)}</div>
+        <div className="agenda-time-end">{hm(session.endsAt)}</div>
+      </div>
+
+      <div className="min-w-0">
+        <h3 className="agenda-title">{session.title}</h3>
+        {(session.location || !session.mandatory) && (
+          <div className="agenda-meta">
+            {session.location && <span>{session.location}</span>}
+            {!session.mandatory && (
+              <span className="chip">Attendance only</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Scheduled is the normal state, so it gets no marker — only what is
+          happening (live, closed) or what a manager can do. */}
+      {(isOpen || isClosed || canManage) && (
+        <div className="agenda-side">
+          {isOpen ? (
+            <>
+              <span className="agenda-state agenda-state--live">
+                <span className="dia dia--green" aria-hidden />
+                Live
+              </span>
+              <button
+                type="button"
+                className="btn btn--quiet btn--small"
+                onClick={() => onStart(session)}
+              >
+                Scan
+              </button>
+            </>
+          ) : isClosed ? (
+            <>
+              <span className="agenda-state">Closed</span>
+              <span className="agenda-tally">
+                {came}
+                {total > 0 ? ` of ${total}` : ""} came
+              </span>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--quiet btn--small"
+              onClick={() => onOpen(session)}
+              disabled={busy}
+            >
+              {busy ? "Opening…" : "Open session"}
+            </button>
+          )}
+        </div>
+      )}
+    </li>
   );
 }

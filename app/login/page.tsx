@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
@@ -52,19 +53,27 @@ function LoginForm() {
   };
 
   return (
-    <div className="max-w-sm mx-auto mt-[12vh]">
-      <form onSubmit={submit} className="admin-card p-6 space-y-4">
-        <div className="space-y-1 text-center">
-          <h1 className="admin-heading text-xl font-bold">
-            TRSYP<span style={{ color: "var(--color-green)" }}> CHECK-IN</span>
-          </h1>
-          <p className="text-sm text-[var(--viz-ink-muted)]">
-            Sign in with your scanner account
-          </p>
-        </div>
+    <div className="login">
+      <Image
+        src="/trsyp-logo.webp"
+        alt="TRSYP"
+        width={157}
+        height={28}
+        className="login-logo"
+        priority
+        // Already a 15 KB WebP; re-encoding would drop its transparency
+        // for clients that don't ask for a format.
+        unoptimized
+      />
 
-        <div className="space-y-2">
-          <label htmlFor="username" className="viz-tile-label block">
+      <h1 className="login-title">Sign in to scan badges</h1>
+      <p className="login-lede">
+        Use the scanner account a manager gave you.
+      </p>
+
+      <form onSubmit={submit} className="login-form">
+        <div className="field">
+          <label htmlFor="username" className="field-label">
             Username
           </label>
           <input
@@ -77,12 +86,12 @@ function LoginForm() {
             autoFocus
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="admin-input w-full px-4 py-3 text-lg"
+            className="input"
           />
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor="password" className="viz-tile-label block">
+        <div className="field">
+          <label htmlFor="password" className="field-label">
             Password
           </label>
           <input
@@ -91,18 +100,22 @@ function LoginForm() {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="admin-input w-full px-4 py-3 text-lg"
+            className="input"
           />
         </div>
 
-        {error && <div className="scan-error">{error}</div>}
+        {error && (
+          <div className="notice" role="alert">
+            {error}
+          </div>
+        )}
 
         <button
           type="submit"
           disabled={busy || !username.trim() || !password}
-          className="admin-btn-primary w-full px-4 py-3 text-xs"
+          className="btn btn--primary btn--block"
         >
-          {busy ? "Checking…" : "Sign in"}
+          {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
     </div>

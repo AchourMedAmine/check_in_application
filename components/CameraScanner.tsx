@@ -35,7 +35,9 @@ export default function CameraScanner({
         allowMultiple
         scanDelay={1500}
         constraints={{ facingMode: "environment" }}
-        components={{ finder: true, torch: true }}
+        // Our own neutral finder (globals.css): the library's is red, and
+        // red/pink means "checked out" everywhere else in the app.
+        components={{ finder: false, torch: true }}
         styles={{
           container: { width: "100%", height: "100%" },
           video: { width: "100%", height: "100%", objectFit: "cover" },

@@ -36,7 +36,9 @@ export const config = {
      * Everything except:
      *  - the login page and its auth endpoints
      *  - Next internals and static files
+     *  - public images (the logo is on the login page, and the image
+     *    optimizer fetches it without the visitor's cookie)
      */
-    "/((?!login|api/auth|_next/static|_next/image|favicon.ico).*)",
+    "/((?!login|api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico)$).*)",
   ],
 };

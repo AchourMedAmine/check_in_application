@@ -138,63 +138,67 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
 
   return (
     <div
-      className="scan-sheet"
+      className="sheet"
       role="dialog"
       aria-modal="true"
       aria-label={`Scanning for ${session.title}`}
     >
-      <header className="scan-sheet-head">
-        <span className="scan-sheet-title">{session.title}</span>
-        <div className="flex items-center gap-4">
-          <span className="scan-sheet-count">
-            {stats.inside}
-            <span> / {stats.total} in</span>
-          </span>
+      <header className="sheet-head">
+        <div className="sheet-head-inner">
           <button
             type="button"
-            className="scan-sheet-close"
+            className="btn btn--quiet btn--small"
             onClick={onClose}
-            aria-label="Stop scanning"
           >
-            ×
+            Done
           </button>
+
+          <div className="sheet-title">
+            <strong>{session.title}</strong>
+            {session.location && <span>{session.location}</span>}
+          </div>
+
+          <div className="sheet-count" aria-live="polite">
+            <span className="sheet-count-value">{stats.inside}</span>
+            {stats.total > 0 && (
+              <span className="sheet-count-total"> / {stats.total}</span>
+            )}
+            <div className="sheet-count-label">in the room</div>
+          </div>
         </div>
       </header>
 
-      <div className="scan-sheet-body">
-        <CameraScanner onDecode={handleDecode} paused={loading} />
+      <div className="sheet-body">
+        <div className="sheet-body-inner">
+          <CameraScanner onDecode={handleDecode} paused={loading} />
 
-        {loading && (
-          <p
-            className="text-xs text-center"
-            style={{ color: "var(--color-green)" }}
-          >
-            Looking up participant…
+          <p className="scan-status" aria-live="polite">
+            {loading ? "Looking up the badge…" : "Hold a badge inside the frame"}
           </p>
-        )}
 
-        {error && <div className="scan-error">{error}</div>}
+          {error && <div className="notice">{error}</div>}
 
-        {result && <ScanBanner result={result} />}
+          {result && <ScanBanner result={result} />}
 
-        <AttendanceRoster
-          inside={roster.inside}
-          onBreak={roster.onBreak}
-          missing={roster.missing}
-          breakAllowanceMinutes={session.breakAllowanceMinutes}
-          penaltyPoints={session.penaltyPoints}
-          mandatory={session.mandatory}
-          loading={report === null}
-          onRefresh={() => {
-            setMoves(new Map());
-            reloadAttendance();
-          }}
-        />
+          <AttendanceRoster
+            inside={roster.inside}
+            onBreak={roster.onBreak}
+            missing={roster.missing}
+            breakAllowanceMinutes={session.breakAllowanceMinutes}
+            penaltyPoints={session.penaltyPoints}
+            mandatory={session.mandatory}
+            loading={report === null}
+            onRefresh={() => {
+              setMoves(new Map());
+              reloadAttendance();
+            }}
+          />
 
-        <p className="scan-hint text-center">
-          Each scan flips the participant&apos;s state: in → out → in. Badges
-          are not printed yet — the QR holds the participant id.
-        </p>
+          <p className="scan-hint">
+            Each scan switches the person between inside and out. A second
+            scan within 10 seconds is ignored.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -214,52 +218,53 @@ function ScanBanner({ result }: { result: ScanResult }) {
   const title =
     result.action === "CheckedIn"
       ? result.breakTaken
-        ? "Back from break"
+        ? "Back from a break"
         : "Checked in"
       : result.action === "CheckedOut"
-        ? "Checked out — break started"
-        : "Duplicate scan ignored";
+        ? "Checked out"
+        : "Already scanned";
 
   const allowance = result.session.breakAllowanceMinutes;
+  const breakTaken = result.breakTaken;
 
   return (
-    <div className={`scan-result scan-result--${variant}`} role="status">
-      <span className="scan-result-title">{title}</span>
-      <span className="scan-result-name">{name || "—"}</span>
-      <span className="scan-result-meta">
-        {result.participant.sb ?? "no SB"} ·{" "}
-        {result.participant.participantType}
+    <div className={`result result--${variant}`} role="status">
+      <span className="result-title">{title}</span>
+      <span className="result-name">{name || "Unnamed participant"}</span>
+      <span className="result-who">
+        <span>{result.participant.sb ?? "No student branch"}</span>
+        <span>{result.participant.participantType}</span>
       </span>
 
-      {result.breakTaken && (
-        <span
-          className={`scan-result-break ${
-            result.session.mandatory && result.breakTaken.overAllowance
-              ? "scan-result-break--over"
-              : ""
-          }`}
-        >
-          Break lasted <strong>{result.breakTaken.breakMinutes} min</strong>
+      {breakTaken && (
+        <p className="result-detail">
+          Out for <strong>{breakTaken.breakMinutes} min</strong>
           {!result.session.mandatory
-            ? "" // attendance only: no allowance to measure against
-            : result.breakTaken.overAllowance
-              ? ` — ${result.breakTaken.minutesOver} min over the ${allowance} min allowance`
-              : ` — within the ${allowance} min allowance`}
-        </span>
+            ? "." // attendance only: no allowance to measure against
+            : breakTaken.overAllowance
+              ? `, ${breakTaken.minutesOver} min over the ${allowance} min allowance.`
+              : `, within the ${allowance} min allowance.`}
+        </p>
       )}
 
       {result.penalty && (
-        <span className="scan-result-penalty">
+        <span className="result-penalty">
           −{result.penalty.points} points
-          {result.participant.sb ? ` · ${result.participant.sb}` : ""}
+          {result.participant.sb && <span>{result.participant.sb}</span>}
         </span>
       )}
 
       {result.action === "CheckedOut" && result.insideMinutes !== null && (
-        <span className="scan-result-break">
-          Was inside for <strong>{result.insideMinutes} min</strong>. The break
-          timer starts now.
-        </span>
+        <p className="result-detail">
+          Inside for <strong>{result.insideMinutes} min</strong>. The break
+          timer is running.
+        </p>
+      )}
+
+      {result.action === "Duplicate" && (
+        <p className="result-detail text-[var(--ink-2)]">
+          Scanned less than 10 seconds ago, so nothing changed.
+        </p>
       )}
     </div>
   );
@@ -268,7 +273,7 @@ function ScanBanner({ result }: { result: ScanResult }) {
 function CameraPlaceholder() {
   return (
     <div className="scan-viewport">
-      <div className="scan-viewport-placeholder">Starting camera…</div>
+      <div className="scan-viewport-placeholder">Starting the camera…</div>
     </div>
   );
 }

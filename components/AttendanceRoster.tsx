@@ -18,14 +18,20 @@ interface AttendanceRosterProps {
   loading?: boolean;
 }
 
+type Tab = "inside" | "onBreak" | "missing";
+
 /** Whole minutes between `iso` and now, floored at 0. */
 function minutesSince(iso: string): number {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
 }
 
+const fullName = (p: Participant) =>
+  `${p.user.name} ${p.user.lastName}`.trim() || "Unnamed participant";
+
 /**
  * The roster of the open session, split by the three states a participant can
- * be in: inside the room, out on a break, or never scanned at all.
+ * be in. One list at a time; it opens on the breaks, which is what staff at
+ * the door have to keep an eye on.
  */
 export default function AttendanceRoster({
   inside,
@@ -37,159 +43,133 @@ export default function AttendanceRoster({
   onRefresh,
   loading = false,
 }: AttendanceRosterProps) {
+  const [tab, setTab] = useState<Tab>("onBreak");
+  const [query, setQuery] = useState("");
+
+  const tabs: { id: Tab; label: string; count: number; dia: string }[] = [
+    { id: "inside", label: "Inside", count: inside.length, dia: "dia--green" },
+    { id: "onBreak", label: "On a break", count: onBreak.length, dia: "dia--amber" },
+    { id: "missing", label: "Not scanned", count: missing.length, dia: "dia--faint" },
+  ];
+
+  const items: Participant[] =
+    tab === "inside" ? inside : tab === "onBreak" ? onBreak : missing;
+
+  const needle = query.trim().toLowerCase();
+  const shown = needle
+    ? items.filter((p) =>
+        `${fullName(p)} ${p.sb ?? ""}`.toLowerCase().includes(needle)
+      )
+    : items;
+
+  const empty = {
+    inside: "Nobody is inside yet.",
+    onBreak: "Nobody is out on a break.",
+    missing: "Everyone expected has been scanned.",
+  }[tab];
+
   return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="viz-tile-label">Roster</h3>
-        <button
-          type="button"
-          onClick={onRefresh}
-          className="admin-btn-secondary px-3 py-1 text-[11px]"
-        >
+    <section className="space-y-3" aria-labelledby="roster-title">
+      <div className="roster-head">
+        <h2 id="roster-title" className="roster-title">
+          Roster
+        </h2>
+        <button type="button" onClick={onRefresh} className="link-btn">
           Refresh
         </button>
       </div>
 
-      <RosterGroup
-        label="Inside"
-        count={inside.length}
-        accent="var(--color-green)"
-        loading={loading}
-        emptyText="Nobody is inside"
-        items={inside}
-        renderMeta={(p) => (
-          <>
-            <span className="scan-recent-time">
-              {minutesSince(p.since)} min in
+      <div className="tabs" role="tablist" aria-label="Roster by state">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls="roster-panel"
+            className="tab"
+            onClick={() => {
+              setTab(t.id);
+              setQuery("");
+            }}
+          >
+            <span className="tab-count">
+              <span className={`dia ${t.dia}`} aria-hidden />
+              {loading ? "–" : t.count}
             </span>
-            <span className="admin-badge admin-badge--green">Checked in</span>
-          </>
-        )}
-      />
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      <RosterGroup
-        label="On break"
-        count={onBreak.length}
-        accent="#c9a227"
-        loading={loading}
-        emptyText="Nobody is out"
-        items={onBreak}
-        renderMeta={(p) => {
-          const out = minutesSince(p.since);
-          const over = mandatory && out > breakAllowanceMinutes;
-          return (
-            <>
-              <span
-                className="scan-recent-time"
-                style={over ? { color: "var(--color-pink)" } : undefined}
-              >
-                {out} min out
-              </span>
-              <span
-                className={`admin-badge ${
-                  over ? "admin-badge--pink" : "admin-badge--amber"
-                }`}
-              >
-                {over ? `−${penaltyPoints} over break` : "Checked out"}
-              </span>
-            </>
-          );
-        }}
-      />
-
-      <RosterGroup
-        label="Not scanned yet"
-        count={missing.length}
-        accent="rgba(255,255,255,0.45)"
-        loading={loading}
-        emptyText="Everyone has been scanned"
-        items={missing}
-        renderMeta={(p) => (
-          <span className="admin-badge admin-badge--gray">
-            {p.sb ?? "no SB"}
-          </span>
+      <div id="roster-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
+        {items.length > 8 && (
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name or student branch"
+            aria-label="Search the list"
+            className="input mb-2"
+          />
         )}
-      />
+
+        {loading ? (
+          <p className="empty">Loading the roster…</p>
+        ) : shown.length === 0 ? (
+          <p className="empty">{items.length === 0 ? empty : "Nobody matches that search."}</p>
+        ) : (
+          <ul className="roster-list">
+            {shown.map((p) => (
+              <li key={p.id} className="roster-row">
+                <span className="roster-who">
+                  <span className="roster-name">{fullName(p)}</span>
+                  <span className="roster-sb">{p.sb ?? "No student branch"}</span>
+                </span>
+                <RowMeta
+                  tab={tab}
+                  participant={p}
+                  allowance={breakAllowanceMinutes}
+                  penaltyPoints={penaltyPoints}
+                  mandatory={mandatory}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   );
 }
 
-interface RosterGroupProps<T extends Participant> {
-  label: string;
-  count: number;
-  accent: string;
-  loading: boolean;
-  emptyText: string;
-  items: T[];
-  renderMeta: (item: T) => React.ReactNode;
-}
+function RowMeta({
+  tab,
+  participant,
+  allowance,
+  penaltyPoints,
+  mandatory,
+}: {
+  tab: Tab;
+  participant: Participant;
+  allowance: number;
+  penaltyPoints: number;
+  mandatory: boolean;
+}) {
+  if (tab === "missing") return null;
 
-function RosterGroup<T extends Participant>({
-  label,
-  count,
-  accent,
-  loading,
-  emptyText,
-  items,
-  renderMeta,
-}: RosterGroupProps<T>) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const since = (participant as RosterParticipant).since;
+  const minutes = minutesSince(since);
 
-  const needle = query.trim().toLowerCase();
-  const filtered = needle
-    ? items.filter((p) =>
-        `${p.user.name} ${p.user.lastName} ${p.sb ?? ""}`
-          .toLowerCase()
-          .includes(needle)
-      )
-    : items;
+  if (tab === "inside") {
+    return <span className="roster-meta">{minutes} min in</span>;
+  }
 
+  const over = mandatory && minutes > allowance;
   return (
-    <div className="space-y-2">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="viz-tile-label flex items-center gap-2 w-full"
-        aria-expanded={open}
-      >
-        <span style={{ color: accent }}>{open ? "▾" : "▸"}</span>
-        {label}
-        <span style={{ color: accent }}>{loading ? "…" : count}</span>
-      </button>
-
-      {open && (
-        <>
-          {items.length > 8 && (
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter by name or SB…"
-              className="admin-input w-full px-3 py-2 text-sm"
-            />
-          )}
-
-          {filtered.length === 0 ? (
-            <p className="admin-empty">
-              {items.length === 0 ? emptyText : "No match"}
-            </p>
-          ) : (
-            <ul className="max-h-72 overflow-y-auto scan-recent">
-              {filtered.map((p) => (
-                <li key={p.id} className="scan-recent-row">
-                  <span className="scan-recent-name">
-                    {`${p.user.name} ${p.user.lastName}`.trim() || "—"}
-                  </span>
-                  <span className="flex items-center gap-2 flex-shrink-0">
-                    {renderMeta(p)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-    </div>
+    <span className={`roster-meta ${over ? "roster-meta--over" : ""}`}>
+      <span className={`dia ${over ? "dia--pink" : "dia--amber"}`} aria-hidden />
+      {over ? `${minutes} min out, −${penaltyPoints}` : `${minutes} min out`}
+    </span>
   );
 }

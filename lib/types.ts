@@ -73,13 +73,20 @@ export interface BranchStanding {
   penalties: number;
 }
 
+/**
+ * Penalties point at participants and sessions with no foreign key (the
+ * website owns `participants` and may delete them). Prisma then returns null
+ * for the relation even though its generated type says it can't be — so the
+ * nulls are spelled out here. The penalty itself, with its snapshotted `sb`,
+ * stays valid and still counts.
+ */
 export type PenaltyRow = Penalty & {
-  session: { title: string };
+  session: { title: string } | null;
   participant: {
     id: string;
     sb: string | null;
-    user: { name: string; lastName: string };
-  };
+    user: { name: string; lastName: string } | null;
+  } | null;
 };
 
 export interface Leaderboard {

@@ -1,57 +1,31 @@
-import type { Metadata } from "next";
-import { Orbitron, Host_Grotesk } from "next/font/google";
-import SignOutButton from "@/components/SignOutButton";
+import type { Metadata, Viewport } from "next";
+import { Host_Grotesk } from "next/font/google";
+import TopBar from "@/components/TopBar";
 import "./globals.css";
 
+// The TRSYP brand face, used for everything — weight and size carry the
+// hierarchy, not a second family.
 const hostGrotesk = Host_Grotesk({
   variable: "--font-host-grotesk",
   subsets: ["latin"],
   display: "swap",
 });
 
-const orbitron = Orbitron({
-  variable: "--font-orbitron",
-  subsets: ["latin"],
-  display: "swap",
-});
-
 export const metadata: Metadata = {
   title: "TRSYP Check-in",
-  description: "Scan participant QR codes to register session attendance",
+  description: "Scan participant badges in and out of TRSYP sessions",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#010008",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${hostGrotesk.variable} ${orbitron.variable} h-full`}
-    >
+    <html lang="en" className={`${hostGrotesk.variable} h-full`}>
       <body className="min-h-full flex flex-col">
-        <header className="admin-header">
-          <div className="admin-header-inner">
-            <div className="admin-header-left">
-              <span className="admin-heading text-lg font-bold">
-                TRSYP<span style={{ color: "var(--color-green)" }}> CHECK-IN</span>
-              </span>
-            </div>
-            <div className="admin-header-right">
-              {/* A plain anchor, not <Link>: the root layout is also rendered
-                  for the global error page, which has no router context. */}
-              <a href="/standings" className="admin-header-name hover:text-white">
-                Standings
-              </a>
-              <SignOutButton />
-            </div>
-          </div>
-        </header>
-
-        <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-8">
-          {children}
-        </main>
-
-        <footer className="px-4 py-6 text-center text-xs text-[var(--viz-ink-faint)]">
-          TRSYP {new Date().getFullYear()}
-        </footer>
+        <TopBar />
+        <main className="page">{children}</main>
       </body>
     </html>
   );

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import SessionCard from "@/components/SessionCard";
+import { useMemo, useState } from "react";
+import { format } from "date-fns";
+import { AgendaRow, LiveSession } from "@/components/SessionCard";
 import ScannerSheet from "@/components/ScannerSheet";
 import { useSessions } from "@/hooks/useAttendance";
 import { useFetch } from "@/hooks/useFetch";
@@ -34,7 +35,7 @@ export default function Home() {
   const endSession = async (session: SessionWithStats) => {
     const sure = window.confirm(
       `Close "${session.title}"?\n\nScanning stops, and everyone still out on a break ` +
-        `is charged as having left early. This cannot be undone.`
+        `longer than the allowance is charged as having left early. This cannot be undone.`
     );
     if (!sure) return;
 
@@ -48,90 +49,88 @@ export default function Home() {
   };
 
   const live = sessions.filter((s) => s.status === "Open");
-  const upcoming = sessions.filter((s) => s.status === "Scheduled");
-  const done = sessions.filter((s) => s.status === "Closed");
+
+  // The programme, one list per day, in the order it happens.
+  const days = useMemo(() => {
+    const byDay = new Map<string, SessionWithStats[]>();
+    for (const s of [...sessions].sort(
+      (a, b) => +new Date(a.startsAt) - +new Date(b.startsAt)
+    )) {
+      const key = format(new Date(s.startsAt), "yyyy-MM-dd");
+      byDay.set(key, [...(byDay.get(key) ?? []), s]);
+    }
+    return [...byDay.entries()];
+  }, [sessions]);
+
+  const actions = {
+    onStart: setActive,
+    onOpen: openAndScan,
+    onEnd: endSession,
+    canManage,
+  };
 
   return (
     <div className="space-y-8">
-      <div className="space-y-1">
-        <h1 className="admin-heading text-2xl font-bold">Sessions</h1>
-        <p className="text-sm text-[var(--viz-ink-muted)]">
-          Tap your session to start scanning participants in and out.
+      <div>
+        <h1 className="page-title">Sessions</h1>
+        <p className="page-lede">
+          {canManage
+            ? "Open a session when its doors open, then scan badges in and out."
+            : "Pick the live session at your door and scan badges in and out."}
         </p>
       </div>
 
-      {actionError && <div className="scan-error">{actionError}</div>}
+      {actionError && <div className="notice">{actionError}</div>}
 
       {loading ? (
-        <div className="session-list">
-          <div className="admin-card h-48 animate-pulse" />
-          <div className="admin-card h-48 animate-pulse" />
+        <div className="space-y-3" aria-busy="true">
+          <div className="skeleton h-56" />
+          <div className="skeleton h-16" />
+          <div className="skeleton h-16" />
         </div>
       ) : failed ? (
-        <div className="admin-card p-6 text-center space-y-3">
-          <span className="admin-badge admin-badge--pink">
-            Could not load sessions
-          </span>
-          <p className="text-sm text-[var(--viz-ink-muted)]">
-            {error ?? "The server did not respond."}
+        <div className="notice space-y-3">
+          <p>
+            The sessions didn&apos;t load: {error ?? "the server did not respond."}
           </p>
-          <button
-            type="button"
-            onClick={reload}
-            className="admin-btn-secondary px-4 py-2 text-[11px]"
-          >
+          <button type="button" onClick={reload} className="btn btn--quiet btn--small">
             Try again
           </button>
         </div>
       ) : sessions.length === 0 ? (
-        <div className="admin-card p-6 text-center">
-          <span className="admin-badge admin-badge--gray">No sessions</span>
-          <p className="mt-3 text-sm text-[var(--viz-ink-muted)]">
-            The database has no sessions yet.
-          </p>
-        </div>
+        <p className="empty">
+          No sessions yet. They appear here once the programme is loaded.
+        </p>
       ) : (
         <>
-          <SessionGroup label="Live now" sessions={live}>
-            {(s) => (
-              <SessionCard
-                key={s.id}
-                session={s}
-                onStart={setActive}
-                onOpen={openAndScan}
-                onEnd={endSession}
-                canManage={canManage}
-                busy={busyId === s.id}
-              />
-            )}
-          </SessionGroup>
+          {live.map((s) => (
+            <LiveSession
+              key={s.id}
+              session={s}
+              {...actions}
+              busy={busyId === s.id}
+            />
+          ))}
 
-          <SessionGroup label="Upcoming" sessions={upcoming}>
-            {(s) => (
-              <SessionCard
-                key={s.id}
-                session={s}
-                onStart={setActive}
-                onOpen={openAndScan}
-                onEnd={endSession}
-                canManage={canManage}
-                busy={busyId === s.id}
-              />
-            )}
-          </SessionGroup>
-
-          <SessionGroup label="Finished" sessions={done}>
-            {(s) => (
-              <SessionCard
-                key={s.id}
-                session={s}
-                onStart={setActive}
-                onOpen={openAndScan}
-                onEnd={endSession}
-                canManage={canManage}
-              />
-            )}
-          </SessionGroup>
+          <div>
+            {days.map(([day, list]) => (
+              <section key={day} className="agenda-day" aria-label={day}>
+                <h2 className="day-title">
+                  {format(new Date(list[0].startsAt), "EEEE d MMMM")}
+                </h2>
+                <ul>
+                  {list.map((s) => (
+                    <AgendaRow
+                      key={s.id}
+                      session={s}
+                      {...actions}
+                      busy={busyId === s.id}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
         </>
       )}
 
@@ -146,24 +145,5 @@ export default function Home() {
         />
       )}
     </div>
-  );
-}
-
-function SessionGroup({
-  label,
-  sessions,
-  children,
-}: {
-  label: string;
-  sessions: SessionWithStats[];
-  children: (session: SessionWithStats) => React.ReactNode;
-}) {
-  if (sessions.length === 0) return null;
-
-  return (
-    <section>
-      <h2 className="session-group-label">{label}</h2>
-      <div className="session-list">{sessions.map(children)}</div>
-    </section>
   );
 }
