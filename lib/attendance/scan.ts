@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db";
 import type { Penalty, Presence, SB, Session } from "@/generated/prisma/client";
+import { ValidationError } from "@/lib/errors";
 import { evaluateBreak, type BreakEvaluation } from "./evaluate-break";
-import { settleBreaks } from "./settle";
+import { lockParticipant, lockSession, TX_OPTIONS, type Tx } from "./locks";
+import { chargeBreaks } from "./settle";
 
 /**
  * Each participant moves through a simple state machine *per session*:
@@ -38,6 +40,11 @@ export interface ScanOutcome {
 /**
  * Records one badge scan and returns what it did. The direction is derived
  * from stored state, never from the client, so two doors cannot disagree.
+ *
+ * Runs as one transaction under the participant lock: two doors reading the
+ * same badge take turns, and the second sees the first one's write (and
+ * reports a Duplicate). All or nothing — an error means nothing was recorded,
+ * so staff can safely scan again.
  */
 export async function recordScan({
   participant,
@@ -51,9 +58,32 @@ export async function recordScan({
   stationId?: string;
   now?: Date;
 }): Promise<ScanOutcome> {
-  const participantId = participant.id;
+  return prisma.$transaction(async (tx) => {
+    await lockSession(tx, session.id, "shared");
+    await lockParticipant(tx, session.id, participant.id);
 
-  const open = await prisma.presence.findFirst({
+    // The route checked the status before the lock; a close may have
+    // committed while this scan waited.
+    const current = await tx.session.findUnique({
+      where: { id: session.id },
+      select: { status: true },
+    });
+    if (current?.status !== "Open") {
+      throw new ValidationError(`Session "${session.title}" is not open`);
+    }
+
+    return applyScan(tx, participant.id, session, now, stationId);
+  }, TX_OPTIONS);
+}
+
+async function applyScan(
+  tx: Tx,
+  participantId: string,
+  session: Session,
+  now: Date,
+  stationId: string | undefined
+): Promise<ScanOutcome> {
+  const open = await tx.presence.findFirst({
     where: { participantId, sessionId: session.id, checkOutAt: null },
   });
 
@@ -72,14 +102,10 @@ export async function recordScan({
       };
     }
 
-    const presence = await prisma.presence.update({
+    const presence = await tx.presence.update({
       where: { id: open.id },
       data: { checkOutAt: now },
     });
-
-    // Charges any OTHER break that has since gone over while this station
-    // was busy — the scan is simply the most frequent moment we get to look.
-    await settleBreaks(session, now);
 
     return {
       action: "CheckedOut",
@@ -92,9 +118,9 @@ export async function recordScan({
   }
 
   // ── Not inside: either never scanned, or on a break ─────────────────────
-  const last = await prisma.presence.findFirst({
+  const last = await tx.presence.findFirst({
     where: { participantId, sessionId: session.id },
-    orderBy: { checkOutAt: "desc" },
+    orderBy: { checkInAt: "desc" },
   });
 
   if (
@@ -119,7 +145,7 @@ export async function recordScan({
       })
     : null;
 
-  const presence = await prisma.presence.create({
+  const presence = await tx.presence.create({
     data: {
       participantId,
       sessionId: session.id,
@@ -130,14 +156,13 @@ export async function recordScan({
 
   // The penalty for the break they just ended was already owed the moment it
   // passed the allowance, so it may exist from an earlier settle. Either way
-  // this records the final length and returns it for the banner.
-  await settleBreaks(session, now);
-  const penalty = breakTaken?.overAllowance
-    ? await prisma.penalty.findFirst({
-        where: { participantId, sessionId: session.id },
-        orderBy: { createdAt: "desc" },
-      })
-    : null;
+  // this records the final length and returns it for the banner. Only this
+  // participant is settled here; the roster poll settles everyone else.
+  await chargeBreaks(tx, session, now, { participantId });
+  const penalty =
+    breakTaken?.overAllowance && last
+      ? await tx.penalty.findFirst({ where: { presenceId: last.id } })
+      : null;
 
   return {
     action: "CheckedIn",

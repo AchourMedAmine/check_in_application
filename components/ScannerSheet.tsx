@@ -98,7 +98,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
     if (!scan) return;
 
     setResult(scan);
-    setStats(scan.stats);
+    if (scan.stats) setStats(scan.stats);
 
     if (scan.action !== "Duplicate") {
       setMoves((prev) => {

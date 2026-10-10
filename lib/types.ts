@@ -44,7 +44,8 @@ export interface ScanResult {
   penalty: Penalty | null;
   /** Set on check-out: minutes spent inside. */
   insideMinutes: number | null;
-  stats: SessionStats;
+  /** Null when the scan was saved but the figures could not be read. */
+  stats: SessionStats | null;
 }
 
 export type SessionWithStats = Session & { stats: SessionStats };

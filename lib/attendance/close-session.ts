@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { Session } from "@/generated/prisma/client";
-import { settleBreaks } from "./settle";
+import { lockSession, TX_OPTIONS } from "./locks";
+import { chargeBreaks } from "./settle";
 
 export interface CloseSessionResult {
   /** Open intervals ended at the session's end time. */
@@ -18,6 +19,11 @@ export interface CloseSessionResult {
  * absence would cost nothing at all. Closing the session treats the stretch
  * from their last check-out to `ends_at` as the break and charges it.
  *
+ * One transaction under the EXCLUSIVE session lock: scans and roster settles
+ * already in flight finish first, and any that arrive meanwhile wait, then
+ * find the session Closed. Nothing can slip a check-in in, or bill a break
+ * as OverBreak, halfway through the close.
+ *
  * Idempotent: the unique key on (presence_id, reason) means re-running this
  * cannot double-charge, so a retry or an accidental second click is harmless.
  */
@@ -26,33 +32,32 @@ export async function closeSession(
 ): Promise<CloseSessionResult> {
   const endsAt = session.endsAt;
 
-  // Settle every break as it stood at the end of the session. Breaks still
-  // running are measured to ends_at and marked LeftEarly.
-  const settled = await settleBreaks(session, endsAt, { finalizing: true });
+  return prisma.$transaction(async (tx) => {
+    await lockSession(tx, session.id, "exclusive");
 
-  // Anyone still in the room when it ended simply has their interval closed.
-  const openNow = await prisma.presence.findMany({
-    where: { sessionId: session.id, checkOutAt: null },
-    select: { id: true },
-  });
+    await tx.session.update({
+      where: { id: session.id },
+      data: { status: "Closed" },
+    });
 
-  if (openNow.length > 0) {
-    await prisma.presence.updateMany({
-      where: { id: { in: openNow.map((p) => p.id) } },
+    // Settle every break as it stood at the end of the session. Breaks still
+    // running are measured to ends_at and marked LeftEarly.
+    const settled = await chargeBreaks(tx, session, endsAt, {
+      finalizing: true,
+    });
+
+    // Anyone still in the room when it ended simply has their interval closed.
+    const { count: closed } = await tx.presence.updateMany({
+      where: { sessionId: session.id, checkOutAt: null },
       data: { checkOutAt: endsAt },
     });
-  }
 
-  await prisma.session.update({
-    where: { id: session.id },
-    data: { status: "Closed" },
-  });
-
-  return {
-    closed: openNow.length,
-    charged: settled.charged,
-    points: settled.points,
-  };
+    return {
+      closed,
+      charged: settled.charged,
+      points: settled.points,
+    };
+  }, TX_OPTIONS);
 }
 
 export interface BranchStanding {

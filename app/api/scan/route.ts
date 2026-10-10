@@ -45,6 +45,14 @@ export async function POST(req: NextRequest) {
       stationId: body.stationId,
     });
 
+    // The scan is committed at this point. Failing the request now would
+    // tell staff it didn't go through, and a re-scan would flip the
+    // participant straight back — so the figures are best-effort.
+    const stats = await getSessionStats(session).catch((err) => {
+      console.error("Scan recorded, but stats failed:", err);
+      return null;
+    });
+
     return {
       participant,
       session: {
@@ -54,7 +62,7 @@ export async function POST(req: NextRequest) {
         audience: session.audience,
       },
       ...outcome,
-      stats: await getSessionStats(session),
+      stats,
     };
   }, req);
 }

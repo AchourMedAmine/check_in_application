@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
-import type { Presence, Session } from "@/generated/prisma/client";
+import type { Presence, Prisma, Session } from "@/generated/prisma/client";
 import { evaluateBreak } from "./evaluate-break";
+import { lockSession, TX_OPTIONS, type Tx } from "./locks";
 
 /**
  * Charges the breaks that have run past the session allowance.
@@ -16,8 +17,8 @@ import { evaluateBreak } from "./evaluate-break";
  * answer from stored timestamps, and the unique key on (presence_id, reason)
  * stops a break being billed twice.
  *
- * It is called on every scan and whenever the roster is read, so penalties
- * appear on their own without a scheduler.
+ * It runs whenever the roster or leaderboard is read, so penalties appear on
+ * their own without a scheduler. A scan settles only the scanned participant.
  */
 export interface SettleResult {
   /** Penalties newly written by this call. */
@@ -25,13 +26,43 @@ export interface SettleResult {
   points: number;
 }
 
+/**
+ * Settles an Open session in its own transaction. Holds the session lock
+ * shared, so it runs alongside scans but never overlaps a close — which is
+ * what would otherwise bill one break as both OverBreak and LeftEarly.
+ */
 export async function settleBreaks(
   session: Session,
-  now: Date = new Date(),
-  options: { finalizing?: boolean } = {}
+  now: Date = new Date()
 ): Promise<SettleResult> {
-  const presences = await prisma.presence.findMany({
-    where: { sessionId: session.id },
+  return prisma.$transaction(async (tx) => {
+    await lockSession(tx, session.id, "shared");
+
+    // The caller read the status before taking the lock; a close may have
+    // committed since. Settling a closed session against the wall clock
+    // would rewrite its final LeftEarly charges.
+    const current = await tx.session.findUnique({
+      where: { id: session.id },
+      select: { status: true },
+    });
+    if (current?.status !== "Open") return { charged: 0, points: 0 };
+
+    return chargeBreaks(tx, session, now);
+  }, TX_OPTIONS);
+}
+
+/**
+ * The settling itself, on the caller's transaction. The caller must hold the
+ * session lock (shared, or exclusive when finalizing).
+ */
+export async function chargeBreaks(
+  tx: Tx,
+  session: Session,
+  now: Date,
+  options: { finalizing?: boolean; participantId?: string } = {}
+): Promise<SettleResult> {
+  const presences = await tx.presence.findMany({
+    where: { sessionId: session.id, participantId: options.participantId },
     orderBy: [{ participantId: "asc" }, { checkInAt: "asc" }],
   });
 
@@ -76,19 +107,18 @@ export async function settleBreaks(
 
   if (overdue.length === 0) return { charged: 0, points: 0 };
 
-  const existing = await prisma.penalty.findMany({
+  const existing = await tx.penalty.findMany({
     where: { presenceId: { in: overdue.map((b) => b.presence.id) } },
   });
   const byPresence = new Map(existing.map((p) => [p.presenceId, p]));
 
-  const sbs = await prisma.participant.findMany({
+  const sbs = await tx.participant.findMany({
     where: { id: { in: [...new Set(overdue.map((b) => b.presence.participantId))] } },
     select: { id: true, sb: true },
   });
   const sbOf = new Map(sbs.map((p) => [p.id, p.sb]));
 
-  let charged = 0;
-  let points = 0;
+  const toCreate: Prisma.PenaltyCreateManyInput[] = [];
 
   for (const b of overdue) {
     const already = byPresence.get(b.presence.id);
@@ -102,7 +132,7 @@ export async function settleBreaks(
         already.breakMinutes !== b.evaluation.breakMinutes ||
         already.reason !== reason
       ) {
-        await prisma.penalty.update({
+        await tx.penalty.update({
           where: { id: already.id },
           data: { breakMinutes: b.evaluation.breakMinutes, reason },
         });
@@ -110,21 +140,26 @@ export async function settleBreaks(
       continue;
     }
 
-    await prisma.penalty.create({
-      data: {
-        participantId: b.presence.participantId,
-        sessionId: session.id,
-        presenceId: b.presence.id,
-        sb: sbOf.get(b.presence.participantId) ?? null,
-        breakMinutes: b.evaluation.breakMinutes,
-        points: session.penaltyPoints,
-        reason,
-      },
+    toCreate.push({
+      participantId: b.presence.participantId,
+      sessionId: session.id,
+      presenceId: b.presence.id,
+      sb: sbOf.get(b.presence.participantId) ?? null,
+      breakMinutes: b.evaluation.breakMinutes,
+      points: session.penaltyPoints,
+      reason,
     });
-
-    charged++;
-    points += session.penaltyPoints;
   }
 
-  return { charged, points };
+  if (toCreate.length === 0) return { charged: 0, points: 0 };
+
+  // Another door or a roster poll may be settling the same break right now.
+  // ON CONFLICT DO NOTHING lets the loser of that race simply skip the row
+  // instead of failing the whole request.
+  const { count } = await tx.penalty.createMany({
+    data: toCreate,
+    skipDuplicates: true,
+  });
+
+  return { charged: count, points: count * session.penaltyPoints };
 }
