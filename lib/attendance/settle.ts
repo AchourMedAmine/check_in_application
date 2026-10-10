@@ -61,6 +61,10 @@ export async function chargeBreaks(
   now: Date,
   options: { finalizing?: boolean; participantId?: string } = {}
 ): Promise<SettleResult> {
+  // Attendance is still recorded at an optional session, but breaks there
+  // cost nothing.
+  if (!session.mandatory) return { charged: 0, points: 0 };
+
   const presences = await tx.presence.findMany({
     where: { sessionId: session.id, participantId: options.participantId },
     orderBy: [{ participantId: "asc" }, { checkInAt: "asc" }],

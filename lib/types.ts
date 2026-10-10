@@ -33,7 +33,10 @@ export interface ScanQRInput {
 /** What one badge scan did. */
 export interface ScanResult {
   participant: Participant;
-  session: Pick<Session, "id" | "title" | "breakAllowanceMinutes" | "audience">;
+  session: Pick<
+    Session,
+    "id" | "title" | "breakAllowanceMinutes" | "audience" | "mandatory"
+  >;
   action: ScanAction;
   presence: Presence;
   /** State after the scan: true = in the room, false = out. */

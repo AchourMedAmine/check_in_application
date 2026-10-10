@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
         title: session.title,
         breakAllowanceMinutes: session.breakAllowanceMinutes,
         audience: session.audience,
+        mandatory: session.mandatory,
       },
       ...outcome,
       stats,

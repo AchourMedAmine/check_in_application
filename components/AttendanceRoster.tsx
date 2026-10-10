@@ -11,6 +11,8 @@ interface AttendanceRosterProps {
   breakAllowanceMinutes: number;
   /** Points the SB loses once a break goes over. */
   penaltyPoints: number;
+  /** False for attendance-only sessions: breaks are timed but never "over". */
+  mandatory: boolean;
   onRefresh: () => void;
   /** True until the first report has arrived. */
   loading?: boolean;
@@ -31,6 +33,7 @@ export default function AttendanceRoster({
   missing,
   breakAllowanceMinutes,
   penaltyPoints,
+  mandatory,
   onRefresh,
   loading = false,
 }: AttendanceRosterProps) {
@@ -73,7 +76,7 @@ export default function AttendanceRoster({
         items={onBreak}
         renderMeta={(p) => {
           const out = minutesSince(p.since);
-          const over = out > breakAllowanceMinutes;
+          const over = mandatory && out > breakAllowanceMinutes;
           return (
             <>
               <span

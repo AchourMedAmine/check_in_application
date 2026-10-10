@@ -183,6 +183,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
           missing={roster.missing}
           breakAllowanceMinutes={session.breakAllowanceMinutes}
           penaltyPoints={session.penaltyPoints}
+          mandatory={session.mandatory}
           loading={report === null}
           onRefresh={() => {
             setMoves(new Map());
@@ -233,13 +234,17 @@ function ScanBanner({ result }: { result: ScanResult }) {
       {result.breakTaken && (
         <span
           className={`scan-result-break ${
-            result.breakTaken.overAllowance ? "scan-result-break--over" : ""
+            result.session.mandatory && result.breakTaken.overAllowance
+              ? "scan-result-break--over"
+              : ""
           }`}
         >
           Break lasted <strong>{result.breakTaken.breakMinutes} min</strong>
-          {result.breakTaken.overAllowance
-            ? ` — ${result.breakTaken.minutesOver} min over the ${allowance} min allowance`
-            : ` — within the ${allowance} min allowance`}
+          {!result.session.mandatory
+            ? "" // attendance only: no allowance to measure against
+            : result.breakTaken.overAllowance
+              ? ` — ${result.breakTaken.minutesOver} min over the ${allowance} min allowance`
+              : ` — within the ${allowance} min allowance`}
         </span>
       )}
 

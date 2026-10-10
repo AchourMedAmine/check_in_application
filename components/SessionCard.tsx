@@ -60,6 +60,9 @@ export default function SessionCard({
             >
               {session.audience === "Everyone" ? "All participants" : "Assigned"}
             </span>
+            {!session.mandatory && (
+              <span className="admin-badge admin-badge--gray">Attendance only</span>
+            )}
           </div>
 
           <h2 className="admin-heading text-xl font-bold">{session.title}</h2>
@@ -81,7 +84,7 @@ export default function SessionCard({
 
       {total === 0 ? (
         <p className="text-xs text-[var(--viz-ink-faint)]">
-          No roster yet — participants pick their workshops on the TRSYP site.
+          No roster yet — the expected participants haven&apos;t been assigned.
         </p>
       ) : (
         <>
