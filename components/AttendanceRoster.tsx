@@ -165,11 +165,18 @@ function RowMeta({
     return <span className="roster-meta">{minutes} min in</span>;
   }
 
-  const over = mandatory && minutes > allowance;
+  // Only what the server will actually charge: the same rule decides both.
+  const pastLimit = mandatory && minutes > allowance;
+  const answers = (participant as RosterParticipant).answers !== false;
+  const over = pastLimit && answers;
   return (
     <span className={`roster-meta ${over ? "roster-meta--over" : ""}`}>
       <span className={`dia ${over ? "dia--pink" : "dia--amber"}`} aria-hidden />
-      {over ? `${minutes} min out, −${penaltyPoints}` : `${minutes} min out`}
+      {over
+        ? `${minutes} min out, −${penaltyPoints}`
+        : pastLimit
+          ? `${minutes} min out, not charged`
+          : `${minutes} min out`}
     </span>
   );
 }

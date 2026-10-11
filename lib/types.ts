@@ -51,6 +51,8 @@ export interface ScanResult {
   lateMinutes: number | null;
   /** Excused here by a technical challenge at the same time. */
   excused: boolean;
+  /** Why this person is never charged here; null = they are. */
+  notCharged: string | null;
   /** Null when the scan was saved but the figures could not be read. */
   stats: SessionStats | null;
 }
@@ -61,7 +63,11 @@ export type SessionWithStats = Session & { stats: SessionStats };
  * A participant plus the moment their current state began: check-in time for
  * someone inside, check-out time for someone on a break.
  */
-export type RosterParticipant = Participant & { since: string };
+export type RosterParticipant = Participant & {
+  since: string;
+  /** False when this session never charges them (excused, or not on its roster). */
+  answers?: boolean;
+};
 
 export interface AttendanceReport {
   session: Session;
@@ -104,7 +110,13 @@ export interface SessionChanges {
   /** Server time of this answer; send it back as `since` next time. */
   now: string;
   /** Latest state of every participant whose state changed since then. */
-  changes: { participant: Participant; inside: boolean; since: string }[];
+  changes: {
+    participant: Participant;
+    inside: boolean;
+    since: string;
+    /** False when this session never charges them. */
+    answers: boolean;
+  }[];
   stats: SessionStats;
   /** When the session really started, as tapped at a door; null = not yet. */
   startedAt: string | null;

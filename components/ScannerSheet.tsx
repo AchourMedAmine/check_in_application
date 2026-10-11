@@ -152,6 +152,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
             since: String(
               scan.inside ? scan.presence.checkInAt : scan.presence.checkOutAt
             ),
+            answers: scan.notCharged === null,
           },
         ])
       );
@@ -168,7 +169,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
     const inside: RosterParticipant[] = [];
     const onBreak: RosterParticipant[] = [];
     for (const m of moves.values()) {
-      const entry = { ...m.participant, since: m.since };
+      const entry = { ...m.participant, since: m.since, answers: m.answers };
       (m.inside ? inside : onBreak).push(entry);
     }
 
@@ -322,10 +323,8 @@ function ScanBanner({ result }: { result: ScanResult }) {
         </p>
       )}
 
-      {result.excused && result.action !== "Duplicate" && (
-        <p className="result-detail">
-          Excused here: they have a technical challenge at the same time.
-        </p>
+      {result.notCharged && result.action !== "Duplicate" && (
+        <p className="result-detail">Not charged here: {result.notCharged}.</p>
       )}
 
       {result.action === "Duplicate" && (

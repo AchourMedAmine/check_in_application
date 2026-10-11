@@ -10,6 +10,8 @@ export interface RosterMove {
   inside: boolean;
   /** When that state began (check-in or check-out time), ISO string. */
   since: string;
+  /** False when this session never charges them (excused, not on roster). */
+  answers: boolean;
 }
 
 /**

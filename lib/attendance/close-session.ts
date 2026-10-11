@@ -92,7 +92,7 @@ export async function closeSession(
 }
 
 /**
- * Charges every chargeable participant who never scanned into the session —
+ * Charges everyone who had to attend and never scanned into the session —
  * expected, not excused by a technical challenge, never seen. One penalty per
  * participant per session (a unique index guarantees it), with no interval
  * to hang off.
@@ -110,7 +110,7 @@ async function chargeAbsences(
     distinct: ["participantId"],
   });
   const came = new Set(seen.map((p) => p.participantId));
-  const absent = [...who.chargeable].filter((id) => !came.has(id));
+  const absent = [...who.mustAttend].filter((id) => !came.has(id));
   if (absent.length === 0) return { charged: 0, points: 0 };
 
   const sbs = await tx.participant.findMany({

@@ -53,45 +53,46 @@ export default function StandingsPage() {
         <div className="skeleton h-48" aria-busy="true" />
       ) : !data ? (
         <div className="notice">
-          The standings didn&apos;t load: {error ?? "the server did not respond."}
+          The standings didn&apos;t load:{" "}
+          {error ?? "the server did not respond."}
         </div>
-      ) : data.standings.length === 0 ? (
-        <p className="empty">
-          No branch has lost points yet.
-        </p>
+      ) : data.penalties.length === 0 ? (
+        <p className="empty">No branch has lost points yet.</p>
       ) : (
         <>
-          <section className="panel" aria-labelledby="ranking-title">
-            <h2 id="ranking-title" className="panel-title">
-              {data.totalPoints} points lost across {data.standings.length}{" "}
-              {data.standings.length === 1 ? "branch" : "branches"}
-            </h2>
-            <p className="panel-lede">Most points lost first.</p>
+          {data.standings.length > 0 && (
+            <section className="panel" aria-labelledby="ranking-title">
+              <h2 id="ranking-title" className="panel-title">
+                {data.totalPoints} points lost across {data.standings.length}{" "}
+                {data.standings.length === 1 ? "branch" : "branches"}
+              </h2>
+              <p className="panel-lede">Most points lost first.</p>
 
-            <ol className="ranks">
-              {data.standings.map((s, i) => (
-                <li key={s.sb} className="rank">
-                  <span className="rank-pos">{i + 1}</span>
-                  <span className="rank-sb">{s.sb}</span>
-                  <span className="rank-track" aria-hidden>
-                    <span
-                      className="rank-fill"
-                      style={{ width: `${(s.points / max) * 100}%` }}
-                    />
-                  </span>
-                  <span className="rank-points">−{s.points}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
+              <ol className="ranks">
+                {data.standings.map((s, i) => (
+                  <li key={s.sb} className="rank">
+                    <span className="rank-pos">{i + 1}</span>
+                    <span className="rank-sb">{s.sb}</span>
+                    <span className="rank-track" aria-hidden>
+                      <span
+                        className="rank-fill"
+                        style={{ width: `${(s.points / max) * 100}%` }}
+                      />
+                    </span>
+                    <span className="rank-points">−{s.points}</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
 
           <section className="panel" aria-labelledby="log-title">
             <h2 id="log-title" className="panel-title">
               Every deduction ({data.penalties.length})
             </h2>
             <p className="panel-lede">
-              The break behind each lost point, for when a branch disputes
-              its score.
+              The break behind each lost point, for when a branch disputes its
+              score.
             </p>
 
             <ul className="log">
@@ -109,7 +110,9 @@ export default function StandingsPage() {
                   <div className="log-facts">
                     <span>{p.sb ?? "No student branch"}</span>
                     <span>{p.session?.title ?? "Deleted session"}</span>
-                    <span className="num">{describe(p.reason, p.breakMinutes)}</span>
+                    <span className="num">
+                      {describe(p.reason, p.breakMinutes)}
+                    </span>
                     <span className="num">
                       {format(new Date(p.createdAt), "EEE HH:mm")}
                     </span>

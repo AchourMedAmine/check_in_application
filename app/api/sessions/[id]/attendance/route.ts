@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { handleApiRequest } from "@/lib/api-handler";
 import { getSessionOrThrow } from "@/lib/attendance/session";
 import { settleBreaks } from "@/lib/attendance/settle";
-import { accountability } from "@/lib/attendance/expected";
+import { accountability, answersFor } from "@/lib/attendance/expected";
 import { requireScanner } from "@/lib/scanners";
 
 const withUser = {
@@ -48,7 +48,7 @@ export async function GET(
     // Who is held to account here — the same answer as the absence penalty,
     // so this list is exactly who would be charged as absent right now.
     const who = await accountability(prisma, session);
-    const missingIds = [...who.chargeable].filter((id) => !latest.has(id));
+    const missingIds = [...who.mustAttend].filter((id) => !latest.has(id));
 
     const [seen, missing] = await Promise.all([
       prisma.participant.findMany({
@@ -68,7 +68,9 @@ export async function GET(
       .map((pid) => {
         const participant = byId.get(pid);
         const p = latest.get(pid)!;
-        return participant ? { ...participant, since: p.checkInAt } : null;
+        return participant
+          ? { ...participant, since: p.checkInAt, answers: answersFor(who, pid) }
+          : null;
       })
       .filter((p) => p !== null)
       .sort((a, b) => b.since.getTime() - a.since.getTime());
@@ -77,7 +79,9 @@ export async function GET(
       .map((pid) => {
         const participant = byId.get(pid);
         const p = latest.get(pid)!;
-        return participant ? { ...participant, since: p.checkOutAt! } : null;
+        return participant
+          ? { ...participant, since: p.checkOutAt!, answers: answersFor(who, pid) }
+          : null;
       })
       .filter((p) => p !== null)
       .sort((a, b) => a.since.getTime() - b.since.getTime()); // longest break first
@@ -91,7 +95,7 @@ export async function GET(
         inside: inside.length,
         onBreak: onBreak.length,
         missing: missing.length,
-        total: who.chargeable.size,
+        total: who.mustAttend.size,
         unexpected,
       },
       inside,

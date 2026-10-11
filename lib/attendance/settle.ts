@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import type { Presence, Prisma, Session } from "@/generated/prisma/client";
 import { evaluateBreak } from "./evaluate-break";
 import { lockSession, TX_OPTIONS, type Tx } from "./locks";
-import { accountability, type Accountability } from "./expected";
+import { accountability, answersFor, type Accountability } from "./expected";
 
 /**
  * Charges the breaks that have run past the session allowance.
@@ -117,11 +117,11 @@ export async function chargeBreaks(
 
   if (overdue.length === 0) return { charged: 0, points: 0 };
 
-  // Only the people this session holds to account: not those excused by a
-  // technical challenge at the same time, nor walk-ins to someone else's
-  // workshop (they answer for their own).
-  const { chargeable } = options.who ?? (await accountability(tx, session));
-  const owed = overdue.filter((b) => chargeable.has(b.presence.participantId));
+  // Everyone in the room answers for their breaks — except those excused by
+  // a technical challenge at the same time, and walk-ins to someone else's
+  // workshop (they answer at their own).
+  const who = options.who ?? (await accountability(tx, session));
+  const owed = overdue.filter((b) => answersFor(who, b.presence.participantId));
   if (owed.length === 0) return { charged: 0, points: 0 };
 
   const existing = await tx.penalty.findMany({

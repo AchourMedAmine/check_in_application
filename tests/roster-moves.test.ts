@@ -10,6 +10,7 @@ const move = (id: string, inside: boolean, at: string): RosterMove => ({
   participant: person(id),
   inside,
   since: `2026-10-17T13:${at}:00.000Z`,
+  answers: true,
 });
 
 test("another station's scan appears on this phone", () => {

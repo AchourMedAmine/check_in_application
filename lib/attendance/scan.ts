@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import type { Penalty, Presence, SB, Session } from "@/generated/prisma/client";
 import { ValidationError } from "@/lib/errors";
 import { evaluateBreak, minutesLate, type BreakEvaluation } from "./evaluate-break";
-import { accountability, standingOf } from "./expected";
+import { accountability, notChargedReason, standingOf } from "./expected";
 import { lockParticipant, lockSession, TX_OPTIONS, type Tx } from "./locks";
 import { chargeBreaks } from "./settle";
 
@@ -40,6 +40,8 @@ export interface ScanOutcome {
   lateMinutes: number | null;
   /** Excused here by a technical challenge at the same time: never charged. */
   excused: boolean;
+  /** Why this person is never charged here (mandatory sessions); null = they are. */
+  notCharged: string | null;
 }
 
 /**
@@ -100,7 +102,11 @@ async function applyScan(
 ): Promise<ScanOutcome> {
   const participantId = participant.id;
   const standing = await standingOf(tx, session, participantId);
-  const quiet = { lateMinutes: null, excused: standing.excused };
+  const quiet = {
+    lateMinutes: null,
+    excused: standing.excused,
+    notCharged: session.mandatory ? notChargedReason(session, standing) : null,
+  };
 
   const open = await tx.presence.findFirst({
     where: { participantId, sessionId: session.id, checkOutAt: null },
@@ -195,7 +201,7 @@ async function applyScan(
   const lateMinutes = last
     ? null
     : minutesLate({ startedAt: session.startedAt, checkInAt: now });
-  if (lateMinutes !== null && session.mandatory && standing.chargeable) {
+  if (lateMinutes !== null && session.mandatory && standing.answers) {
     await tx.penalty.createMany({
       data: {
         participantId,
@@ -222,6 +228,7 @@ async function applyScan(
     insideMinutes: null,
     lateMinutes,
     excused: standing.excused,
+    notCharged: quiet.notCharged,
   };
 }
 
@@ -261,8 +268,8 @@ export async function getSessionStats(session: Session): Promise<SessionStats> {
   return {
     inside: insideIds.size,
     onBreak: seenIds.size - insideIds.size,
-    missing: [...who.chargeable].filter((id) => !seenIds.has(id)).length,
-    total: who.chargeable.size,
+    missing: [...who.mustAttend].filter((id) => !seenIds.has(id)).length,
+    total: who.mustAttend.size,
     unexpected: seen.filter((id) => !who.expected.has(id)).length,
   };
 }
