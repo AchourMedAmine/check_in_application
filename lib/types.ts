@@ -95,6 +95,15 @@ export interface Leaderboard {
   penalties: PenaltyRow[];
 }
 
+/** GET /api/sessions/[id]/changes — what other stations scanned lately. */
+export interface SessionChanges {
+  /** Server time of this answer; send it back as `since` next time. */
+  now: string;
+  /** Latest state of every participant whose state changed since then. */
+  changes: { participant: Participant; inside: boolean; since: string }[];
+  stats: SessionStats;
+}
+
 /** The signed-in account, as /api/auth/me returns it. */
 export interface ScannerProfile {
   id: string;

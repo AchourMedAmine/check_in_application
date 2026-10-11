@@ -6,10 +6,11 @@ import { useFetch } from "@/hooks/useFetch";
 import { useAttendance } from "@/hooks/useAttendance";
 import AttendanceRoster from "@/components/AttendanceRoster";
 import { acceptRead, type SeenBadges } from "@/lib/scan-gate";
+import { mergeMoves, type RosterMove } from "@/lib/roster-moves";
 import {
-  Participant,
   RosterParticipant,
   ScanResult,
+  SessionChanges,
   SessionWithStats,
 } from "@/lib/types";
 
@@ -32,21 +33,22 @@ const RESULT_VISIBLE_MS = 5000;
  */
 const ROSTER_POLL_MS = 30_000;
 
-/** A state change made since the roster was fetched, applied on top of it. */
-interface LocalMove {
-  participant: Participant;
-  inside: boolean;
-  since: string;
-}
+/**
+ * Other stations' scans: a light "what changed?" request this often, so two
+ * phones at one session agree within seconds rather than at the next full
+ * refresh.
+ */
+const CHANGES_POLL_MS = 3_000;
 
 export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
   const { fetch, loading, error } = useFetch<ScanResult>();
   const [result, setResult] = useState<ScanResult | null>(null);
   const [stats, setStats] = useState(session.stats);
   const { report, reload: reloadAttendance } = useAttendance(session.id);
-  // Scans since the roster was fetched. Applying them locally avoids
-  // re-downloading the whole roster after every single scan.
-  const [moves, setMoves] = useState<Map<string, LocalMove>>(new Map());
+  // State changes since the roster was fetched — this phone's scans and the
+  // other stations' — applied on top of it, so the whole roster need not be
+  // re-downloaded after every single scan.
+  const [moves, setMoves] = useState<Map<string, RosterMove>>(new Map());
   // When the camera last saw each badge — see lib/scan-gate.ts.
   const seenRef = useRef<SeenBadges>(new Map());
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -76,6 +78,37 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
     return () => clearInterval(id);
   }, [reloadAttendance]);
 
+  // Pick up the other stations' scans every few seconds. A timeout chain,
+  // not an interval, so a slow answer never stacks up requests; paused while
+  // the screen is off.
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let since: string | null = null;
+
+    const tick = async () => {
+      if (document.visibilityState === "visible") {
+        const query = since ? `?since=${encodeURIComponent(since)}` : "";
+        const res = await global
+          .fetch(`/api/sessions/${session.id}/changes${query}`)
+          .catch(() => null);
+        if (res?.ok && !stopped) {
+          const { data } = (await res.json()) as { data: SessionChanges };
+          since = data.now;
+          setStats(data.stats);
+          setMoves((prev) => mergeMoves(prev, data.changes));
+        }
+      }
+      if (!stopped) timer = setTimeout(tick, CHANGES_POLL_MS);
+    };
+
+    timer = setTimeout(tick, CHANGES_POLL_MS);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [session.id]);
+
   const handleDecode = async (rawValue: string) => {
     const code = rawValue.trim();
     if (!code || loading) return;
@@ -103,17 +136,17 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
     if (scan.stats) setStats(scan.stats);
 
     if (scan.action !== "Duplicate") {
-      setMoves((prev) => {
-        const next = new Map(prev);
-        next.set(scan.participant.id, {
-          participant: scan.participant,
-          inside: scan.inside,
-          since: String(
-            scan.inside ? scan.presence.checkInAt : scan.presence.checkOutAt
-          ),
-        });
-        return next;
-      });
+      setMoves((prev) =>
+        mergeMoves(prev, [
+          {
+            participant: scan.participant,
+            inside: scan.inside,
+            since: String(
+              scan.inside ? scan.presence.checkInAt : scan.presence.checkOutAt
+            ),
+          },
+        ])
+      );
     }
 
     if (hideTimer.current) clearTimeout(hideTimer.current);
