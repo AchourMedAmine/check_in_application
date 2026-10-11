@@ -49,6 +49,13 @@ export function LiveSession({
             {session.title}
           </h2>
           <p className="live-where">{where(session)}</p>
+          {session.mandatory && (
+            <p className="live-where">
+              {session.startedAt
+                ? `Started at ${hm(session.startedAt)}`
+                : "Not started yet"}
+            </p>
+          )}
         </div>
 
         <div className="live-count">

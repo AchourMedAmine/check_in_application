@@ -118,36 +118,25 @@ test("time after the scheduled end never counts, however late the close", () => 
 
 import { minutesLate } from "../lib/attendance/evaluate-break";
 
-const late = (checkInMinutes: number, openedMinutes: number | null = null) =>
-  minutesLate({
-    startsAt: base,
-    openedAt: openedMinutes === null ? null : plus(openedMinutes),
-    checkInAt: plus(checkInMinutes),
-  });
+/** Minutes are relative to the moment the session was marked as started. */
+const late = (checkInMinutes: number, started: boolean = true) =>
+  minutesLate({ startedAt: started ? base : null, checkInAt: plus(checkInMinutes) });
 
-test("arriving early or on time is not late", () => {
-  assert.equal(late(-15), null);
+test("before the session really starts, nobody is late", () => {
+  assert.equal(late(-25), null);
   assert.equal(late(0), null);
 });
 
-test("up to 10 minutes after the start is still on time (door queue)", () => {
+test("up to 10 minutes after the real start is still on time (door queue)", () => {
   assert.equal(late(10), null);
-  assert.equal(minutesLate({ startsAt: base, openedAt: null, checkInAt: plus(10, 59) }), null);
+  assert.equal(minutesLate({ startedAt: base, checkInAt: plus(10, 59) }), null);
 });
 
-test("the 11th minute is late, and the lateness is counted from the start", () => {
+test("the 11th minute is late, and lateness counts from the real start", () => {
   assert.equal(late(11), 11);
   assert.equal(late(25), 25);
 });
 
-test("doors opened late make nobody late", () => {
-  // Scheduled at 0, a manager only opened it at 20: a scan at 25 is on time.
-  assert.equal(late(25, 20), null);
-  assert.equal(late(31, 20), 11);
-});
-
-test("opening early does not move the start forward", () => {
-  // Check-in opened 30 min before the start (Opening Ceremony at 13:30 for 14:00).
-  assert.equal(late(5, -30), null);
-  assert.equal(late(12, -30), 12);
+test("a session nobody marked as started charges no lateness at all", () => {
+  assert.equal(late(90, false), null);
 });

@@ -87,9 +87,9 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     ...ATTENDANCE_ONLY,
   },
   {
-    // The ceremony starts at 14:00 — that is what "late" is measured from.
-    // Check-in runs 13:30–14:00: a manager opens the session at 13:30 so
-    // the doors can scan, and nobody scanned before 14:10 is late.
+    // Scheduled for 14:00, so its doors open by themselves at 13:30 — the
+    // programme's check-in window. Lateness counts from when the moderators
+    // actually begin, tapped at the door ("Session started").
     title: "Opening Ceremony",
     location: ROOM.ceremonies,
     startsAt: at("17", "14:00"),

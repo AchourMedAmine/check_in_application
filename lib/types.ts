@@ -106,6 +106,8 @@ export interface SessionChanges {
   /** Latest state of every participant whose state changed since then. */
   changes: { participant: Participant; inside: boolean; since: string }[];
   stats: SessionStats;
+  /** When the session really started, as tapped at a door; null = not yet. */
+  startedAt: string | null;
 }
 
 /** The signed-in account, as /api/auth/me returns it. */

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useFetch } from "@/hooks/useFetch";
 import { useAttendance } from "@/hooks/useAttendance";
+import { useMe } from "@/hooks/useMe";
+import { format } from "date-fns";
 import AttendanceRoster from "@/components/AttendanceRoster";
 import { acceptRead, type SeenBadges } from "@/lib/scan-gate";
 import { mergeMoves, type RosterMove } from "@/lib/roster-moves";
@@ -44,6 +46,11 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
   const { fetch, loading, error } = useFetch<ScanResult>();
   const [result, setResult] = useState<ScanResult | null>(null);
   const [stats, setStats] = useState(session.stats);
+  // When the session really began (tapped at a door); lateness counts from it.
+  const [startedAt, setStartedAt] = useState<string | null>(
+    session.startedAt ? String(session.startedAt) : null
+  );
+  const me = useMe();
   const { report, reload: reloadAttendance } = useAttendance(session.id);
   // State changes since the roster was fetched — this phone's scans and the
   // other stations' — applied on top of it, so the whole roster need not be
@@ -96,6 +103,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
           const { data } = (await res.json()) as { data: SessionChanges };
           since = data.now;
           setStats(data.stats);
+          setStartedAt(data.startedAt);
           setMoves((prev) => mergeMoves(prev, data.changes));
         }
       }
@@ -205,6 +213,15 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
 
       <div className="sheet-body">
         <div className="sheet-body-inner">
+          {session.mandatory && (
+            <StartBar
+              session={session}
+              startedAt={startedAt}
+              onChange={setStartedAt}
+              canUndo={me?.role === "Manager"}
+            />
+          )}
+
           <CameraScanner onDecode={handleDecode} paused={loading} />
 
           <p className="scan-status" aria-live="polite">
@@ -316,6 +333,92 @@ function ScanBanner({ result }: { result: ScanResult }) {
           Scanned less than 10 seconds ago, so nothing changed.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Lateness counts from the moment the session really began — when the
+ * moderator or instructor started — which only the person at the door can
+ * see. One tap records it; a manager can take it back.
+ */
+function StartBar({
+  session,
+  startedAt,
+  onChange,
+  canUndo,
+}: {
+  session: SessionWithStats;
+  startedAt: string | null;
+  onChange: (startedAt: string | null) => void;
+  canUndo: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const send = async (method: "POST" | "DELETE") => {
+    setBusy(true);
+    setProblem(null);
+    const res = await global
+      .fetch(`/api/sessions/${session.id}/start`, { method })
+      .catch(() => null);
+    const body = res ? await res.json().catch(() => null) : null;
+    setBusy(false);
+    if (!res?.ok) {
+      setProblem(body?.error ?? "That didn't go through. Try again.");
+      return;
+    }
+    const s = method === "POST" ? body.data : body.data.session;
+    onChange(s.startedAt ? String(s.startedAt) : null);
+  };
+
+  const start = () => {
+    const sure = window.confirm(
+      `Has "${session.title}" started?\n\nTap only once the moderator or instructor ` +
+        `has begun. From now on, anyone scanned more than 10 minutes later is ` +
+        `charged as late.`
+    );
+    if (sure) send("POST");
+  };
+
+  const undo = () => {
+    const sure = window.confirm(
+      `Undo the start of "${session.title}"?\n\nEvery late penalty charged in this ` +
+        `session is removed, and nobody counts as late until it is marked as started again.`
+    );
+    if (sure) send("DELETE");
+  };
+
+  if (!startedAt) {
+    return (
+      <div className="start-bar">
+        <span>
+          <strong>Not started yet.</strong> Tap when the speaker begins; late
+          arrivals count from then.
+        </span>
+        <button type="button" className="btn btn--quiet btn--small" onClick={start} disabled={busy}>
+          {busy ? "Saving…" : "Session started"}
+        </button>
+        {problem && <span className="start-bar-problem">{problem}</span>}
+      </div>
+    );
+  }
+
+  const at = new Date(startedAt);
+  const lateFrom = new Date(at.getTime() + 10 * 60_000);
+  return (
+    <div className="start-bar start-bar--started">
+      <span>
+        <span className="dia dia--green" aria-hidden />
+        <strong>Started {format(at, "HH:mm")}.</strong> Scans after{" "}
+        {format(lateFrom, "HH:mm")} count as late.
+      </span>
+      {canUndo && (
+        <button type="button" className="link-btn" onClick={undo} disabled={busy}>
+          {busy ? "Saving…" : "Undo start"}
+        </button>
+      )}
+      {problem && <span className="start-bar-problem">{problem}</span>}
     </div>
   );
 }

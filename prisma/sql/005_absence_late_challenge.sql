@@ -1,6 +1,7 @@
 -- The congress rules beyond over-long breaks (5 points per offence):
 --   Absent  — expected at a session and never scanned (charged at close)
---   Late    — first scan more than 10 minutes after the start
+--   Late    — first scan more than 10 minutes after the session REALLY
+--             started (someone at the door taps "Session started")
 -- and the exception: anyone with a technical challenge at the same time is
 -- excused from the session. Challenge slots are sessions flagged
 -- `challenge`; their roster is who is excused from overlapping sessions.
@@ -11,7 +12,8 @@
 --
 -- Apply with:  npm run db:apply prisma/sql/005_absence_late_challenge.sql
 -- Roll back:   DROP INDEX checkin.penalties_one_per_offence;
---              ALTER TABLE checkin.sessions DROP COLUMN opened_at, DROP COLUMN challenge;
+--              ALTER TABLE checkin.sessions DROP COLUMN opened_at, DROP COLUMN started_at,
+--                                           DROP COLUMN challenge;
 --              (enum values cannot be dropped; unused ones are harmless)
 
 ALTER TYPE checkin."PenaltyReason" ADD VALUE IF NOT EXISTS 'Absent';
@@ -29,10 +31,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS penalties_one_per_offence
   NULLS NOT DISTINCT;
 
 ALTER TABLE checkin.sessions
-  -- When a manager first opened the session. Lateness counts from the start
-  -- time or from this, whichever is later: nobody is late because the doors
-  -- opened late.
+  -- When the doors opened and scanning began: automatically 30 minutes
+  -- before the scheduled start, or earlier by a manager.
   ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP(3),
+  -- When the session really began — the moderator or instructor started.
+  -- Tapped at the door; lateness counts from here. NULL = not started, and
+  -- then nobody is late.
+  ADD COLUMN IF NOT EXISTS started_at TIMESTAMP(3),
   -- A technical-challenge slot: its roster is excused from every session
   -- that overlaps it.
   ADD COLUMN IF NOT EXISTS challenge BOOLEAN NOT NULL DEFAULT FALSE;

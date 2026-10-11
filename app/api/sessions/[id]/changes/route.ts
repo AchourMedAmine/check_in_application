@@ -86,6 +86,7 @@ export async function GET(
       ];
     });
 
-    return { now: now.toISOString(), changes, stats };
+    // Another phone may have tapped "Session started".
+    return { now: now.toISOString(), changes, stats, startedAt: session.startedAt };
   }, req);
 }

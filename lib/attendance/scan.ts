@@ -74,7 +74,7 @@ export async function recordScan({
     // committed while this scan waited.
     const current = await tx.session.findUnique({
       where: { id: session.id },
-      select: { status: true, openedAt: true },
+      select: { status: true, startedAt: true },
     });
     if (current?.status !== "Open") {
       throw new ValidationError(`Session "${session.title}" is not open`);
@@ -83,7 +83,8 @@ export async function recordScan({
     return applyScan(
       tx,
       participant,
-      { ...session, openedAt: current.openedAt },
+      // The start may have been tapped after the caller read the session.
+      { ...session, startedAt: current.startedAt },
       now,
       { scannerId, stationId }
     );
@@ -189,11 +190,11 @@ async function applyScan(
       : null;
 
   // Their first scan into the session: arriving more than the grace period
-  // after the start costs the branch points (only where this session holds
-  // them to account).
+  // after it really started costs the branch points (only where this
+  // session holds them to account).
   const lateMinutes = last
     ? null
-    : minutesLate({ startsAt: session.startsAt, openedAt: session.openedAt, checkInAt: now });
+    : minutesLate({ startedAt: session.startedAt, checkInAt: now });
   if (lateMinutes !== null && session.mandatory && standing.chargeable) {
     await tx.penalty.createMany({
       data: {

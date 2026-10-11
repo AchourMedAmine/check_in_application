@@ -709,6 +709,37 @@ button {
   color: var(--ink-3);
 }
 
+/* Whether the session has really started — lateness counts from then. */
+.start-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--rule);
+  background: var(--deck);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.start-bar strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.start-bar--started .dia {
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+.start-bar-problem {
+  flex-basis: 100%;
+  color: #ff7fb0;
+}
+
 .scan-status {
   min-height: 21px;
   text-align: center;

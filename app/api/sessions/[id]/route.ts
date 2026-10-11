@@ -46,9 +46,8 @@ export async function PATCH(
       where: { id },
       data: {
         status: body.status,
-        // The first opening is when the doors opened: lateness counts from
-        // the start time or from this, whichever is later. Never moved by a
-        // later re-open.
+        // When the doors first opened (a manager opening early, before the
+        // automatic opening 30 minutes ahead). Never moved by a re-open.
         ...(body.status === "Open" && !existing.openedAt
           ? { openedAt: new Date() }
           : {}),

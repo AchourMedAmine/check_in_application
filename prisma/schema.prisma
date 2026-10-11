@@ -218,9 +218,13 @@ model Session {
   /// that overlaps it.
   challenge Boolean @default(false)
 
-  /// When a manager first opened it. Lateness counts from startsAt or from
-  /// this, whichever is later.
+  /// When the doors opened and scanning began (automatically 30 minutes
+  /// before startsAt, or earlier by a manager).
   openedAt DateTime? @map("opened_at")
+
+  /// When the session really began — tapped at the door when the moderator
+  /// or instructor started. Lateness counts from here; null = nobody late.
+  startedAt DateTime? @map("started_at")
 
   status    SessionStatus @default(Scheduled)
   createdAt DateTime      @default(now()) @map("created_at")
