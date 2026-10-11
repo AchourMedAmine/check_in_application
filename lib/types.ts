@@ -43,10 +43,14 @@ export interface ScanResult {
   inside: boolean;
   /** Set when a check-in ended a break. */
   breakTaken: BreakEvaluation | null;
-  /** Written when that break was over the allowance. */
+  /** Written when that break was over the allowance, or for arriving late. */
   penalty: Penalty | null;
   /** Set on check-out: minutes spent inside. */
   insideMinutes: number | null;
+  /** Set on a first check-in past the grace period. */
+  lateMinutes: number | null;
+  /** Excused here by a technical challenge at the same time. */
+  excused: boolean;
   /** Null when the scan was saved but the figures could not be read. */
   stats: SessionStats | null;
 }

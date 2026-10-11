@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { handleApiRequest } from "@/lib/api-handler";
 import { getSessionOrThrow } from "@/lib/attendance/session";
 import { settleBreaks } from "@/lib/attendance/settle";
+import { accountability } from "@/lib/attendance/expected";
 import { requireScanner } from "@/lib/scanners";
 
 const withUser = {
@@ -44,15 +45,10 @@ export async function GET(
 
     const seenIds = [...latest.keys()];
 
-    // Who was expected: everyone for the Opening Ceremony, the assigned
-    // roster for a workshop.
-    const roster =
-      session.audience === "Assigned"
-        ? await prisma.sessionParticipant.findMany({
-            where: { sessionId: session.id },
-            select: { participantId: true },
-          })
-        : null;
+    // Who is held to account here — the same answer as the absence penalty,
+    // so this list is exactly who would be charged as absent right now.
+    const who = await accountability(prisma, session);
+    const missingIds = [...who.chargeable].filter((id) => !latest.has(id));
 
     const [seen, missing] = await Promise.all([
       prisma.participant.findMany({
@@ -60,22 +56,11 @@ export async function GET(
         include: withUser,
       }),
       prisma.participant.findMany({
-        where: roster
-          ? {
-              id: {
-                in: roster.map((r) => r.participantId),
-                notIn: seenIds,
-              },
-            }
-          : { id: { notIn: seenIds } },
+        where: { id: { in: missingIds } },
         include: withUser,
         orderBy: { user: { lastName: "asc" } },
       }),
     ]);
-
-    const expectedIds = roster
-      ? new Set(roster.map((r) => r.participantId))
-      : null;
 
     const byId = new Map(seen.map((p) => [p.id, p]));
 
@@ -97,11 +82,8 @@ export async function GET(
       .filter((p) => p !== null)
       .sort((a, b) => a.since.getTime() - b.since.getTime()); // longest break first
 
-    // On an Assigned session, walk-ins are recorded but are not part of the
-    // expected total.
-    const unexpected = expectedIds
-      ? seenIds.filter((id) => !expectedIds.has(id)).length
-      : 0;
+    // Walk-ins (and unpaid participants) are recorded but not held to account.
+    const unexpected = seenIds.filter((id) => !who.expected.has(id)).length;
 
     return {
       session,
@@ -109,7 +91,7 @@ export async function GET(
         inside: inside.length,
         onBreak: onBreak.length,
         missing: missing.length,
-        total: seenIds.length - unexpected + missing.length,
+        total: who.chargeable.size,
         unexpected,
       },
       inside,

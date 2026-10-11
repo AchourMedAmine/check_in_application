@@ -214,6 +214,14 @@ model Session {
   breakAllowanceMinutes Int @default(15) @map("break_allowance_minutes")
   penaltyPoints         Int @default(5) @map("penalty_points")
 
+  /// A technical-challenge slot: its roster is excused from every session
+  /// that overlaps it.
+  challenge Boolean @default(false)
+
+  /// When a manager first opened it. Lateness counts from startsAt or from
+  /// this, whichever is later.
+  openedAt DateTime? @map("opened_at")
+
   status    SessionStatus @default(Scheduled)
   createdAt DateTime      @default(now()) @map("created_at")
   updatedAt DateTime      @updatedAt @map("updated_at")
@@ -233,6 +241,10 @@ enum PenaltyReason {
   OverBreak
   /// Left and never came back — charged when the session was closed.
   LeftEarly
+  /// Expected and never scanned — charged when the session was closed.
+  Absent
+  /// First scan more than the grace period after the start.
+  Late
 
   @@schema("checkin")
 }
@@ -245,14 +257,15 @@ model Penalty {
   participantId String @map("participant_id")
   sessionId     String @map("session_id")
 
-  /// The interval this penalty hangs off: for OverBreak the one whose
-  /// check-in ended the break, for LeftEarly the one they left from.
-  presenceId String @map("presence_id")
+  /// The interval this penalty hangs off: the one left from (OverBreak,
+  /// LeftEarly) or the first check-in (Late). Null for Absent.
+  presenceId String? @map("presence_id")
 
   /// Snapshots taken when the penalty was charged — never re-derived, so
   /// later edits to a participant's SB or a session's points cannot rewrite
   /// history.
   sb           SB?
+  /// Minutes out (OverBreak, LeftEarly) or minutes late (Late); 0 for Absent.
   breakMinutes Int @map("break_minutes")
   points       Int
 
@@ -261,7 +274,7 @@ model Penalty {
 
   participant Participant @relation(fields: [participantId], references: [id])
   session     Session     @relation(fields: [sessionId], references: [id])
-  presence    Presence    @relation(fields: [presenceId], references: [id])
+  presence    Presence?   @relation(fields: [presenceId], references: [id])
 
   /// A retry, a double scan, or a re-run of closeSession can never charge
   /// the same break twice.

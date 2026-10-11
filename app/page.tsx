@@ -34,8 +34,9 @@ export default function Home() {
   // Closing settles every break still running as LeftEarly — confirm first.
   const endSession = async (session: SessionWithStats) => {
     const sure = window.confirm(
-      `Close "${session.title}"?\n\nScanning stops, and everyone still out on a break ` +
-        `longer than the allowance is charged as having left early. This cannot be undone.`
+      `Close "${session.title}"?\n\nScanning stops. Everyone expected who never came is ` +
+        `charged as absent, and anyone still out longer than the allowance as having ` +
+        `left early. This cannot be undone.`
     );
     if (!sure) return;
 

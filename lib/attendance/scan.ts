@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
 import type { Penalty, Presence, SB, Session } from "@/generated/prisma/client";
 import { ValidationError } from "@/lib/errors";
-import { evaluateBreak, type BreakEvaluation } from "./evaluate-break";
+import { evaluateBreak, minutesLate, type BreakEvaluation } from "./evaluate-break";
+import { accountability, standingOf } from "./expected";
 import { lockParticipant, lockSession, TX_OPTIONS, type Tx } from "./locks";
 import { chargeBreaks } from "./settle";
 
@@ -31,10 +32,14 @@ export interface ScanOutcome {
   inside: boolean;
   /** Set when a check-in ended a break: how long they were out. */
   breakTaken: BreakEvaluation | null;
-  /** Written when that break was over the allowance. */
+  /** Written when that break was over the allowance, or for arriving late. */
   penalty: Penalty | null;
   /** Set on check-out: how long they had been inside. */
   insideMinutes: number | null;
+  /** Set on a first check-in past the grace period: minutes after the start. */
+  lateMinutes: number | null;
+  /** Excused here by a technical challenge at the same time: never charged. */
+  excused: boolean;
 }
 
 /**
@@ -69,23 +74,33 @@ export async function recordScan({
     // committed while this scan waited.
     const current = await tx.session.findUnique({
       where: { id: session.id },
-      select: { status: true },
+      select: { status: true, openedAt: true },
     });
     if (current?.status !== "Open") {
       throw new ValidationError(`Session "${session.title}" is not open`);
     }
 
-    return applyScan(tx, participant.id, session, now, { scannerId, stationId });
+    return applyScan(
+      tx,
+      participant,
+      { ...session, openedAt: current.openedAt },
+      now,
+      { scannerId, stationId }
+    );
   }, TX_OPTIONS);
 }
 
 async function applyScan(
   tx: Tx,
-  participantId: string,
+  participant: { id: string; sb: SB | null },
   session: Session,
   now: Date,
   by: { scannerId?: string; stationId?: string }
 ): Promise<ScanOutcome> {
+  const participantId = participant.id;
+  const standing = await standingOf(tx, session, participantId);
+  const quiet = { lateMinutes: null, excused: standing.excused };
+
   const open = await tx.presence.findFirst({
     where: { participantId, sessionId: session.id, checkOutAt: null },
   });
@@ -102,6 +117,7 @@ async function applyScan(
         breakTaken: null,
         penalty: null,
         insideMinutes: null,
+        ...quiet,
       };
     }
 
@@ -117,6 +133,7 @@ async function applyScan(
       breakTaken: null,
       penalty: null,
       insideMinutes: Math.max(0, Math.floor(sinceCheckIn / 60_000)),
+      ...quiet,
     };
   }
 
@@ -137,6 +154,7 @@ async function applyScan(
       breakTaken: null,
       penalty: null,
       insideMinutes: null,
+      ...quiet,
     };
   }
 
@@ -163,10 +181,36 @@ async function applyScan(
   // this records the final length and returns it for the banner. Only this
   // participant is settled here; the roster poll settles everyone else.
   await chargeBreaks(tx, session, now, { participantId });
-  const penalty =
+  let penalty =
     breakTaken?.overAllowance && last
-      ? await tx.penalty.findFirst({ where: { presenceId: last.id } })
+      ? await tx.penalty.findFirst({
+          where: { presenceId: last.id, reason: "OverBreak" },
+        })
       : null;
+
+  // Their first scan into the session: arriving more than the grace period
+  // after the start costs the branch points (only where this session holds
+  // them to account).
+  const lateMinutes = last
+    ? null
+    : minutesLate({ startsAt: session.startsAt, openedAt: session.openedAt, checkInAt: now });
+  if (lateMinutes !== null && session.mandatory && standing.chargeable) {
+    await tx.penalty.createMany({
+      data: {
+        participantId,
+        sessionId: session.id,
+        presenceId: presence.id,
+        sb: participant.sb,
+        breakMinutes: lateMinutes,
+        points: session.penaltyPoints,
+        reason: "Late",
+      },
+      skipDuplicates: true,
+    });
+    penalty = await tx.penalty.findFirst({
+      where: { presenceId: presence.id, reason: "Late" },
+    });
+  }
 
   return {
     action: "CheckedIn",
@@ -175,6 +219,8 @@ async function applyScan(
     breakTaken,
     penalty,
     insideMinutes: null,
+    lateMinutes,
+    excused: standing.excused,
   };
 }
 
@@ -183,58 +229,39 @@ export interface SessionStats {
   inside: number;
   /** Checked in at some point, currently out. */
   onBreak: number;
-  /** Expected but never scanned for this session. */
+  /** Held to account here but never scanned — charged as absent at close. */
   missing: number;
-  /** How many are expected: everyone, or the assigned roster. */
+  /** How many this session holds to account: expected, minus excused. */
   total: number;
-  /** Scanned in although not on the roster (Assigned sessions only). */
+  /** Scanned in although not expected here (walk-ins, unpaid). */
   unexpected: number;
 }
 
 /**
- * How many participants are expected at a session: everyone for the Opening
- * Ceremony, only the assigned roster for a workshop.
+ * The live figures. `total` and `missing` use the same definition as the
+ * absence penalty (lib/attendance/expected.ts), so "not scanned yet" is
+ * exactly who will be charged as absent if the session closed now.
  */
-export async function countExpected(session: Session): Promise<number> {
-  return session.audience === "Everyone"
-    ? prisma.participant.count()
-    : prisma.sessionParticipant.count({ where: { sessionId: session.id } });
-}
-
 export async function getSessionStats(session: Session): Promise<SessionStats> {
-  const [presences, total, roster] = await Promise.all([
+  const [presences, who] = await Promise.all([
     prisma.presence.findMany({
       where: { sessionId: session.id },
       select: { participantId: true, checkOutAt: true },
     }),
-    countExpected(session),
-    session.audience === "Assigned"
-      ? prisma.sessionParticipant.findMany({
-          where: { sessionId: session.id },
-          select: { participantId: true },
-        })
-      : Promise.resolve(null),
+    accountability(prisma, session),
   ]);
 
   const insideIds = new Set(
     presences.filter((p) => p.checkOutAt === null).map((p) => p.participantId)
   );
   const seenIds = new Set(presences.map((p) => p.participantId));
-
-  // On an Assigned session someone can turn up who is not on the roster. They
-  // are recorded, but they neither reduce `missing` nor count towards `total`.
-  const expectedIds = roster
-    ? new Set(roster.map((r) => r.participantId))
-    : null;
-  const seenExpected = expectedIds
-    ? [...seenIds].filter((id) => expectedIds.has(id)).length
-    : seenIds.size;
+  const seen = [...seenIds];
 
   return {
     inside: insideIds.size,
     onBreak: seenIds.size - insideIds.size,
-    missing: total - seenExpected,
-    total,
-    unexpected: seenIds.size - seenExpected,
+    missing: [...who.chargeable].filter((id) => !seenIds.has(id)).length,
+    total: who.chargeable.size,
+    unexpected: seen.filter((id) => !who.expected.has(id)).length,
   };
 }

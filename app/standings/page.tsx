@@ -5,6 +5,20 @@ import { format } from "date-fns";
 import { useFetch } from "@/hooks/useFetch";
 import { Leaderboard } from "@/lib/types";
 
+/** What the participant did, in the congress rules' own words. */
+function describe(reason: string, minutes: number): string {
+  switch (reason) {
+    case "Absent":
+      return "Absent";
+    case "Late":
+      return `Arrived ${minutes} min late`;
+    case "LeftEarly":
+      return `Left early, out ${minutes} min`;
+    default:
+      return `${minutes} min break`;
+  }
+}
+
 export default function StandingsPage() {
   const { fetch, error } = useFetch<Leaderboard>();
   const [data, setData] = useState<Leaderboard | null>(null);
@@ -30,8 +44,8 @@ export default function StandingsPage() {
       <div>
         <h1 className="page-title">Branch standings</h1>
         <p className="page-lede">
-          Points each student branch has lost to breaks longer than the
-          session allowance.
+          Points each student branch has lost: 5 for every absence, late
+          arrival, early exit or break longer than the allowance.
         </p>
       </div>
 
@@ -43,8 +57,7 @@ export default function StandingsPage() {
         </div>
       ) : data.standings.length === 0 ? (
         <p className="empty">
-          No branch has lost points yet. Every break so far stayed within its
-          allowance.
+          No branch has lost points yet.
         </p>
       ) : (
         <>
@@ -96,11 +109,7 @@ export default function StandingsPage() {
                   <div className="log-facts">
                     <span>{p.sb ?? "No student branch"}</span>
                     <span>{p.session?.title ?? "Deleted session"}</span>
-                    <span className="num">
-                      {p.reason === "LeftEarly"
-                        ? `Left early, out ${p.breakMinutes} min`
-                        : `${p.breakMinutes} min break`}
-                    </span>
+                    <span className="num">{describe(p.reason, p.breakMinutes)}</span>
                     <span className="num">
                       {format(new Date(p.createdAt), "EEE HH:mm")}
                     </span>

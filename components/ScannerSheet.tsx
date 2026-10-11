@@ -254,7 +254,9 @@ function ScanBanner({ result }: { result: ScanResult }) {
     result.action === "CheckedIn"
       ? result.breakTaken
         ? "Back from a break"
-        : "Checked in"
+        : result.lateMinutes !== null
+          ? "Checked in late"
+          : "Checked in"
       : result.action === "CheckedOut"
         ? "Checked out"
         : "Already scanned";
@@ -270,6 +272,13 @@ function ScanBanner({ result }: { result: ScanResult }) {
         <span>{result.participant.sb ?? "No student branch"}</span>
         <span>{result.participant.participantType}</span>
       </span>
+
+      {result.lateMinutes !== null && (
+        <p className="result-detail">
+          Arrived <strong>{result.lateMinutes} min</strong> after the start
+          {result.penalty ? "." : ", but is not charged here."}
+        </p>
+      )}
 
       {breakTaken && (
         <p className="result-detail">
@@ -293,6 +302,12 @@ function ScanBanner({ result }: { result: ScanResult }) {
         <p className="result-detail">
           Inside for <strong>{result.insideMinutes} min</strong>. The break
           timer is running.
+        </p>
+      )}
+
+      {result.excused && result.action !== "Duplicate" && (
+        <p className="result-detail">
+          Excused here: they have a technical challenge at the same time.
         </p>
       )}
 

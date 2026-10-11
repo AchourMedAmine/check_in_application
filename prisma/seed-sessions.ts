@@ -32,6 +32,7 @@ const ROOM = {
   cesarion: "Salle césarion",
   sphinx: "Salle sphinx",
   cesar: "Salle césar",
+  party: "Party room",
 };
 
 // Sessions that count towards branch points: a break may last 15 minutes;
@@ -44,7 +45,10 @@ const ATTENDANCE_ONLY = { mandatory: false, breakAllowanceMinutes: 15, penaltyPo
 
 /**
  * Every session staff scan for. Not tracked: check-in desks, meals and coffee
- * breaks, the exhibition, the party and the non-technical pitching rounds.
+ * breaks, the exhibition, the party and the non-technical pitching round.
+ *
+ * `challenge: true` marks a technical-challenge slot: everyone on its roster
+ * is excused from any session that overlaps it (the congress rule).
  *
  * Hackathon and competition rosters (Assigned) are filled in later, like the
  * workshops'.
@@ -83,11 +87,12 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     ...ATTENDANCE_ONLY,
   },
   {
-    // Check-in opens at 13:30; the ceremony itself starts at 14:00 and runs
-    // through the sponsors' words and the panel until the 17:00 coffee break.
+    // The ceremony starts at 14:00 — that is what "late" is measured from.
+    // Check-in runs 13:30–14:00: a manager opens the session at 13:30 so
+    // the doors can scan, and nobody scanned before 14:10 is late.
     title: "Opening Ceremony",
     location: ROOM.ceremonies,
-    startsAt: at("17", "13:30"),
+    startsAt: at("17", "14:00"),
     endsAt: at("17", "17:00"),
     audience: "Everyone",
     ...RULES,
@@ -98,10 +103,22 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     startsAt: at("17", "20:30"),
     endsAt: at("18", "00:00"),
     audience: "Assigned",
+    challenge: true,
     ...ATTENDANCE_ONLY,
   },
 
   // ── Day 3 · Sunday 18/10 ──────────────────────────────────────────────
+  {
+    // The programme lists "First session pitching challenge" (party room,
+    // 10 teams) in the 07:00–08:30 breakfast block — confirm the time.
+    title: "Technical Pitching — Session 1",
+    location: ROOM.party,
+    startsAt: at("18", "07:00"),
+    endsAt: at("18", "08:30"),
+    audience: "Assigned",
+    challenge: true,
+    ...ATTENDANCE_ONLY,
+  },
   {
     title: "Workshop 1 — Pitching",
     location: ROOM.cesarion,
@@ -158,6 +175,17 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     endsAt: at("18", "13:00"),
     audience: "Assigned",
     ...RULES,
+  },
+  {
+    // Overlaps the second round of workshops: its pitchers are excused
+    // from them.
+    title: "Technical Pitching — Session 2",
+    location: ROOM.party,
+    startsAt: at("18", "12:00"),
+    endsAt: at("18", "13:00"),
+    audience: "Assigned",
+    challenge: true,
+    ...ATTENDANCE_ONLY,
   },
   {
     // "Not known yet" in the programme. The title is how this script finds

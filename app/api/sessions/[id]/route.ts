@@ -44,7 +44,15 @@ export async function PATCH(
 
     const session = await prisma.session.update({
       where: { id },
-      data: { status: body.status },
+      data: {
+        status: body.status,
+        // The first opening is when the doors opened: lateness counts from
+        // the start time or from this, whichever is later. Never moved by a
+        // later re-open.
+        ...(body.status === "Open" && !existing.openedAt
+          ? { openedAt: new Date() }
+          : {}),
+      },
     });
 
     return { ...session, stats: await getSessionStats(session) };

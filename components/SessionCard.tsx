@@ -138,9 +138,12 @@ export function AgendaRow({
 
       <div className="min-w-0">
         <h3 className="agenda-title">{session.title}</h3>
-        {(session.location || !session.mandatory) && (
+        {(session.location || !session.mandatory || session.challenge) && (
           <div className="agenda-meta">
             {session.location && <span>{session.location}</span>}
+            {session.challenge && (
+              <span className="chip">Technical challenge</span>
+            )}
             {!session.mandatory && (
               <span className="chip">Attendance only</span>
             )}

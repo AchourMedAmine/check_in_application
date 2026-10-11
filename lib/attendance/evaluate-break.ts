@@ -59,3 +59,26 @@ export function evaluateBreak({
 export function sessionEndedAt(endsAt: Date, closedAt: Date): Date {
   return closedAt < endsAt ? closedAt : endsAt;
 }
+
+/** Arriving this long after the start is still on time — a door queue. */
+export const LATE_GRACE_MINUTES = 10;
+
+/**
+ * Whole minutes a first check-in came after the start, or null when it is
+ * within the grace period. The start is the scheduled time or the moment a
+ * manager opened the session, whichever is later: doors that opened late
+ * make nobody late.
+ */
+export function minutesLate({
+  startsAt,
+  openedAt,
+  checkInAt,
+}: {
+  startsAt: Date;
+  openedAt: Date | null;
+  checkInAt: Date;
+}): number | null {
+  const start = openedAt && openedAt > startsAt ? openedAt : startsAt;
+  const minutes = Math.floor((checkInAt.getTime() - start.getTime()) / 60_000);
+  return minutes > LATE_GRACE_MINUTES ? minutes : null;
+}

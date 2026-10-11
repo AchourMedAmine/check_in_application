@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import type { Presence, Prisma, Session } from "@/generated/prisma/client";
 import { evaluateBreak } from "./evaluate-break";
 import { lockSession, TX_OPTIONS, type Tx } from "./locks";
+import { accountability, type Accountability } from "./expected";
 
 /**
  * Charges the breaks that have run past the session allowance.
@@ -59,7 +60,12 @@ export async function chargeBreaks(
   tx: Tx,
   session: Session,
   now: Date,
-  options: { finalizing?: boolean; participantId?: string } = {}
+  options: {
+    finalizing?: boolean;
+    participantId?: string;
+    /** Who this session may charge; looked up when not given. */
+    who?: Accountability;
+  } = {}
 ): Promise<SettleResult> {
   // Attendance is still recorded at an optional session, but breaks there
   // cost nothing.
@@ -111,20 +117,31 @@ export async function chargeBreaks(
 
   if (overdue.length === 0) return { charged: 0, points: 0 };
 
+  // Only the people this session holds to account: not those excused by a
+  // technical challenge at the same time, nor walk-ins to someone else's
+  // workshop (they answer for their own).
+  const { chargeable } = options.who ?? (await accountability(tx, session));
+  const owed = overdue.filter((b) => chargeable.has(b.presence.participantId));
+  if (owed.length === 0) return { charged: 0, points: 0 };
+
   const existing = await tx.penalty.findMany({
-    where: { presenceId: { in: overdue.map((b) => b.presence.id) } },
+    where: {
+      presenceId: { in: owed.map((b) => b.presence.id) },
+      // The first interval may also carry a Late penalty — not a break's.
+      reason: { in: ["OverBreak", "LeftEarly"] },
+    },
   });
   const byPresence = new Map(existing.map((p) => [p.presenceId, p]));
 
   const sbs = await tx.participant.findMany({
-    where: { id: { in: [...new Set(overdue.map((b) => b.presence.participantId))] } },
+    where: { id: { in: [...new Set(owed.map((b) => b.presence.participantId))] } },
     select: { id: true, sb: true },
   });
   const sbOf = new Map(sbs.map((p) => [p.id, p.sb]));
 
   const toCreate: Prisma.PenaltyCreateManyInput[] = [];
 
-  for (const b of overdue) {
+  for (const b of owed) {
     const already = byPresence.get(b.presence.id);
     const reason =
       b.ongoing && options.finalizing ? "LeftEarly" : ("OverBreak" as const);

@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import type { Session } from "@/generated/prisma/client";
 import { lockSession, TX_OPTIONS } from "./locks";
 import { chargeBreaks } from "./settle";
+import { accountability, type Accountability } from "./expected";
+import type { Tx } from "./locks";
 import { sessionEndedAt } from "./evaluate-break";
 
 export interface CloseSessionResult {
@@ -9,6 +11,9 @@ export interface CloseSessionResult {
   closed: number;
   /** Penalties charged to people who left and never came back. */
   charged: number;
+  /** Penalties charged to expected participants who never came. */
+  absent: number;
+  /** All points charged by the close. */
   points: number;
 }
 
@@ -45,7 +50,7 @@ export async function closeSession(
       select: { status: true, endsAt: true },
     });
     if (!current || current.status === "Closed") {
-      return { closed: 0, charged: 0, points: 0 };
+      return { closed: 0, charged: 0, absent: 0, points: 0 };
     }
 
     const endedAt = sessionEndedAt(current.endsAt, now);
@@ -55,12 +60,20 @@ export async function closeSession(
       data: { status: "Closed" },
     });
 
+    // Who this session holds to account — the same answer for breaks and
+    // absences.
+    const who = await accountability(tx, session);
+
     // Settle every break as it stood when the session ended. Breaks still
     // running are measured to that moment, and charged as LeftEarly only if
     // they are over the allowance by then.
     const settled = await chargeBreaks(tx, session, endedAt, {
       finalizing: true,
+      who,
     });
+
+    // Everyone expected who never scanned in was absent.
+    const absent = await chargeAbsences(tx, session, who);
 
     // Anyone still in the room when it ended simply has their interval
     // closed at that moment — never at a scheduled time still in the future.
@@ -72,9 +85,53 @@ export async function closeSession(
     return {
       closed,
       charged: settled.charged,
-      points: settled.points,
+      absent: absent.charged,
+      points: settled.points + absent.points,
     };
   }, TX_OPTIONS);
+}
+
+/**
+ * Charges every chargeable participant who never scanned into the session —
+ * expected, not excused by a technical challenge, never seen. One penalty per
+ * participant per session (a unique index guarantees it), with no interval
+ * to hang off.
+ */
+async function chargeAbsences(
+  tx: Tx,
+  session: Session,
+  who: Accountability
+): Promise<{ charged: number; points: number }> {
+  if (!session.mandatory) return { charged: 0, points: 0 };
+
+  const seen = await tx.presence.findMany({
+    where: { sessionId: session.id },
+    select: { participantId: true },
+    distinct: ["participantId"],
+  });
+  const came = new Set(seen.map((p) => p.participantId));
+  const absent = [...who.chargeable].filter((id) => !came.has(id));
+  if (absent.length === 0) return { charged: 0, points: 0 };
+
+  const sbs = await tx.participant.findMany({
+    where: { id: { in: absent } },
+    select: { id: true, sb: true },
+  });
+
+  const { count } = await tx.penalty.createMany({
+    data: sbs.map((p) => ({
+      participantId: p.id,
+      sessionId: session.id,
+      presenceId: null,
+      sb: p.sb,
+      breakMinutes: 0,
+      points: session.penaltyPoints,
+      reason: "Absent" as const,
+    })),
+    skipDuplicates: true,
+  });
+
+  return { charged: count, points: count * session.penaltyPoints };
 }
 
 export interface BranchStanding {
