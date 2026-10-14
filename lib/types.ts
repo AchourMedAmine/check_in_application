@@ -53,6 +53,8 @@ export interface ScanResult {
   excused: boolean;
   /** Why this person is never charged here; null = they are. */
   notCharged: string | null;
+  /** Assigned sessions: on the list or not. Null for Everyone sessions. */
+  registered: boolean | null;
   /** Null when the scan was saved but the figures could not be read. */
   stats: SessionStats | null;
 }
@@ -67,6 +69,8 @@ export type RosterParticipant = Participant & {
   since: string;
   /** False when this session never charges them (excused, or not on its roster). */
   answers?: boolean;
+  /** False for someone scanned into a session whose list they are not on. */
+  registered?: boolean;
 };
 
 export interface AttendanceReport {
@@ -116,6 +120,8 @@ export interface SessionChanges {
     since: string;
     /** False when this session never charges them. */
     answers: boolean;
+    /** False when they are not on this session's list. */
+    registered: boolean;
   }[];
   stats: SessionStats;
   /** When the session really started, as tapped at a door; null = not yet. */

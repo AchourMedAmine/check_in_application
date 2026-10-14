@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import type { Penalty, Presence, SB, Session } from "@/generated/prisma/client";
 import { ValidationError } from "@/lib/errors";
 import { evaluateBreak, minutesLate, type BreakEvaluation } from "./evaluate-break";
-import { accountability, notChargedReason, standingOf } from "./expected";
+import { accountability, hasList, notChargedReason, standingOf } from "./expected";
 import { lockParticipant, lockSession, TX_OPTIONS, type Tx } from "./locks";
 import { chargeBreaks } from "./settle";
 
@@ -42,6 +42,12 @@ export interface ScanOutcome {
   excused: boolean;
   /** Why this person is never charged here (mandatory sessions); null = they are. */
   notCharged: string | null;
+  /**
+   * For a session with a list (Assigned): whether they are on it. False is
+   * someone who should not be here — the door is told at once. Null for an
+   * Everyone session, or one whose list isn't loaded yet.
+   */
+  registered: boolean | null;
 }
 
 /**
@@ -101,11 +107,16 @@ async function applyScan(
   by: { scannerId?: string; stationId?: string }
 ): Promise<ScanOutcome> {
   const participantId = participant.id;
-  const standing = await standingOf(tx, session, participantId);
+  const [standing, listed] = await Promise.all([
+    standingOf(tx, session, participantId),
+    hasList(tx, session),
+  ]);
   const quiet = {
     lateMinutes: null,
     excused: standing.excused,
     notCharged: session.mandatory ? notChargedReason(session, standing) : null,
+    // No list yet (a workshop whose roster isn't loaded): nobody is flagged.
+    registered: listed ? standing.expected : null,
   };
 
   const open = await tx.presence.findFirst({
@@ -198,9 +209,11 @@ async function applyScan(
   // Their first scan into the session: arriving more than the grace period
   // after it really started costs the branch points (only where this
   // session holds them to account).
-  const lateMinutes = last
-    ? null
-    : minutesLate({ startedAt: session.startedAt, checkInAt: now });
+  // Attendance-only sessions (the hackathon…) have no lateness at all.
+  const lateMinutes =
+    last || !session.mandatory
+      ? null
+      : minutesLate({ startedAt: session.startedAt, checkInAt: now });
   if (lateMinutes !== null && session.mandatory && standing.answers) {
     await tx.penalty.createMany({
       data: {
@@ -229,6 +242,7 @@ async function applyScan(
     lateMinutes,
     excused: standing.excused,
     notCharged: quiet.notCharged,
+    registered: quiet.registered,
   };
 }
 

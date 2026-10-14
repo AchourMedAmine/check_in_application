@@ -218,6 +218,11 @@ model Session {
   /// that overlaps it.
   challenge Boolean @default(false)
 
+  /// A website team activity (FABLAB, COMPETITION, CHALLENGE): the roster is
+  /// then every member of a selected team of that activity, read live from
+  /// public.team_memberships — plus session_participants.
+  teamActivity String? @map("team_activity")
+
   /// When the doors opened and scanning began (automatically 30 minutes
   /// before startsAt, or earlier by a manager).
   openedAt DateTime? @map("opened_at")

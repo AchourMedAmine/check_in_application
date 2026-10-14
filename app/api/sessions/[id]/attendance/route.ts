@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { handleApiRequest } from "@/lib/api-handler";
 import { getSessionOrThrow } from "@/lib/attendance/session";
 import { settleBreaks } from "@/lib/attendance/settle";
-import { accountability, answersFor } from "@/lib/attendance/expected";
+import { accountability, answersFor, registeredFor } from "@/lib/attendance/expected";
 import { requireAssigned, requireScanner } from "@/lib/scanners";
 
 const withUser = {
@@ -70,7 +70,12 @@ export async function GET(
         const participant = byId.get(pid);
         const p = latest.get(pid)!;
         return participant
-          ? { ...participant, since: p.checkInAt, answers: answersFor(who, pid) }
+          ? {
+              ...participant,
+              since: p.checkInAt,
+              answers: answersFor(who, pid),
+              registered: registeredFor(who, pid),
+            }
           : null;
       })
       .filter((p) => p !== null)
@@ -81,7 +86,12 @@ export async function GET(
         const participant = byId.get(pid);
         const p = latest.get(pid)!;
         return participant
-          ? { ...participant, since: p.checkOutAt!, answers: answersFor(who, pid) }
+          ? {
+              ...participant,
+              since: p.checkOutAt!,
+              answers: answersFor(who, pid),
+              registered: registeredFor(who, pid),
+            }
           : null;
       })
       .filter((p) => p !== null)

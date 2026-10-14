@@ -22,49 +22,45 @@ const prisma = new PrismaClient({
   }),
 });
 
-// TRSYP 3.0 programme ("shared program - Sheet1"), 16–18 October 2026.
+// TRSYP 3.0 programme, 16–18 October 2026 (organisers' final list).
 // Times are Tunisia local time (UTC+1 all year — no daylight saving), so they
 // read exactly like the programme. The browser shows them in its own zone.
 const at = (day: string, time: string) => new Date(`2026-10-${day}T${time}:00+01:00`);
 
 const ROOM = {
+  fablab: "Fablab",
   ceremonies: "Salle de cérémonies",
-  cesarion: "Salle césarion",
-  sphinx: "Salle sphinx",
-  cesar: "Salle césar",
-  party: "Party room",
+  luxor: "Luxor Room",
+  ramses: "Ramsès Room",
+  cesarion: "Césarion Room",
+  cesar: "César Room",
+  sphinx: "Sphinx Room",
 };
 
 // Sessions that count towards branch points: a break may last 15 minutes;
 // past that, the participant's branch loses 5 points.
 const RULES = { mandatory: true, breakAllowanceMinutes: 15, penaltyPoints: 5 } as const;
 
-// Attendance only: who came and who didn't, with no break limit and no
-// points at stake.
+// Attendance only: check-ins and check-outs are kept, nothing is ever
+// charged — not to the branch, not to a team.
 const ATTENDANCE_ONLY = { mandatory: false, breakAllowanceMinutes: 15, penaltyPoints: 0 } as const;
 
 /**
- * Every session staff scan for. Not tracked: check-in desks, meals and coffee
- * breaks, the exhibition, the party and the non-technical pitching round.
+ * Every session staff scan for.
  *
  * `challenge: true` marks a technical-challenge slot: everyone on its roster
- * is excused from any session that overlaps it (the congress rule).
+ * is excused from any session that overlaps it (the congress rule) — e.g.
+ * Technical Pitching session 2 overlaps the second round of workshops.
  *
- * Hackathon and competition rosters (Assigned) are filled in later, like the
- * workshops'.
+ * Assigned rosters (workshops, hackathon, challenges) are filled in later.
  */
 const SESSIONS: Prisma.SessionCreateInput[] = [
-  // ── Day 1 · Friday 16/10 — Hackathon (attendance only) ───────────────
-  // One session per block, so the roster shows who turned up to each part.
-  {
-    title: "Hackathon — Launch & Workshop 1",
-    startsAt: at("16", "13:00"),
-    endsAt: at("16", "14:30"),
-    audience: "Assigned",
-    ...ATTENDANCE_ONLY,
-  },
+  // ── Friday 16/10 — Fablab hackathon (attendance only) ─────────────────
   {
     title: "Hackathon — Session 1",
+    location: ROOM.fablab,
+    // The list: every member of a selected Fablab team on the website.
+    teamActivity: "FABLAB",
     startsAt: at("16", "15:00"),
     endsAt: at("16", "19:00"),
     audience: "Assigned",
@@ -72,24 +68,27 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
   },
   {
     title: "Hackathon — Session 2",
+    location: ROOM.fablab,
+    teamActivity: "FABLAB",
     startsAt: at("16", "20:30"),
     endsAt: at("16", "23:00"),
     audience: "Assigned",
     ...ATTENDANCE_ONLY,
   },
 
-  // ── Day 2 · Saturday 17/10 ────────────────────────────────────────────
+  // ── Saturday 17/10 ────────────────────────────────────────────────────
   {
     title: "Hackathon — Pitching",
+    location: ROOM.fablab,
+    teamActivity: "FABLAB",
     startsAt: at("17", "10:30"),
     endsAt: at("17", "11:30"),
     audience: "Assigned",
     ...ATTENDANCE_ONLY,
   },
   {
-    // Scheduled for 14:00, so its doors open by themselves at 13:30 — the
-    // programme's check-in window. Lateness counts from when the moderators
-    // actually begin, tapped at the door ("Session started").
+    // Doors open by themselves at 13:30; lateness counts from when the
+    // moderators actually begin (tapped at the door).
     title: "Opening Ceremony",
     location: ROOM.ceremonies,
     startsAt: at("17", "14:00"),
@@ -98,8 +97,10 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     ...RULES,
   },
   {
-    // Runs past midnight into Sunday.
+    // Runs to midnight.
     title: "Technical Competition",
+    // The list: members of the selected Competition teams.
+    teamActivity: "COMPETITION",
     startsAt: at("17", "20:30"),
     endsAt: at("18", "00:00"),
     audience: "Assigned",
@@ -107,61 +108,87 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     ...ATTENDANCE_ONLY,
   },
 
-  // ── Day 3 · Sunday 18/10 ──────────────────────────────────────────────
+  // ── Sunday 18/10 ──────────────────────────────────────────────────────
+  // Challenge pitching, session 1 — two rooms in parallel.
   {
-    // The programme lists "First session pitching challenge" (party room,
-    // 10 teams) in the 07:00–08:30 breakfast block — confirm the time.
+    title: "Non-technical Challenge Pitching",
+    location: ROOM.luxor,
+    startsAt: at("18", "07:00"),
+    endsAt: at("18", "08:30"),
+    audience: "Assigned",
+    ...ATTENDANCE_ONLY,
+  },
+  {
     title: "Technical Pitching — Session 1",
-    location: ROOM.party,
+    location: ROOM.ramses,
+    // The list: members of the selected technical Challenge teams.
+    teamActivity: "CHALLENGE",
     startsAt: at("18", "07:00"),
     endsAt: at("18", "08:30"),
     audience: "Assigned",
     challenge: true,
     ...ATTENDANCE_ONLY,
   },
+
+  // Workshops, session 1.
   {
-    title: "Workshop 1 — Pitching",
+    // Yosr Bayar. Mandatory for the technical challenge participants — its
+    // roster is them.
+    title: "Pitching Workshop",
     location: ROOM.cesarion,
-    startsAt: at("18", "09:00"),
-    endsAt: at("18", "10:00"),
-    audience: "Assigned", // obligatory for the technical challenge participants
-    ...RULES,
-  },
-  {
-    title: "Workshop 2 — IES Workshop",
-    location: ROOM.sphinx,
+    // Mandatory for the technical challenge teams — they are its list.
+    teamActivity: "CHALLENGE",
     startsAt: at("18", "09:00"),
     endsAt: at("18", "10:00"),
     audience: "Assigned",
     ...RULES,
   },
   {
-    title: "Workshop 3 — YP Tech Session",
+    // Round tables.
+    title: "YP Transition Lab",
     location: ROOM.cesar,
     startsAt: at("18", "09:00"),
     endsAt: at("18", "10:00"),
     audience: "Assigned",
     ...RULES,
   },
+
   {
-    title: "DL Session — Social Psychology and Social Robotics",
+    title: "Distinguished Lecturer Session",
     location: ROOM.ceremonies,
     startsAt: at("18", "10:15"),
     endsAt: at("18", "11:15"),
     audience: "Everyone",
     ...RULES,
   },
+
   {
-    // The programme gives this one 1h30, unlike the other 12:00 workshops.
-    title: "Workshop — Building Agentic & Multimodal Systems",
+    // Overlaps the second round of workshops: its pitchers are excused
+    // from them.
+    title: "Technical Pitching — Session 2",
+    // Same teams as session 1. Being on it excuses them from the workshops
+    // at 12:00.
+    teamActivity: "CHALLENGE",
+    startsAt: at("18", "12:00"),
+    endsAt: at("18", "13:00"),
+    audience: "Assigned",
+    challenge: true,
+    ...ATTENDANCE_ONLY,
+  },
+
+  // Workshops, session 2.
+  {
+    // Mohamed Ali Farhat.
+    title: "NVIDIA Jetson Nano: Edge AI Workshop",
     location: ROOM.sphinx,
     startsAt: at("18", "12:00"),
-    endsAt: at("18", "13:30"),
+    endsAt: at("18", "13:00"),
     audience: "Assigned",
     ...RULES,
   },
   {
-    title: "Round Tables YP",
+    // Khalil Masmoudi.
+    title: "If/Else or AI Agent? Picking the Right Tool for the Job",
     location: ROOM.cesar,
     startsAt: at("18", "12:00"),
     endsAt: at("18", "13:00"),
@@ -176,33 +203,11 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     audience: "Assigned",
     ...RULES,
   },
+
   {
-    // Overlaps the second round of workshops: its pitchers are excused
-    // from them.
-    title: "Technical Pitching — Session 2",
-    location: ROOM.party,
-    startsAt: at("18", "12:00"),
-    endsAt: at("18", "13:00"),
-    audience: "Assigned",
-    challenge: true,
-    ...ATTENDANCE_ONLY,
-  },
-  {
-    // "Not known yet" in the programme. The title is how this script finds
-    // the session again: rename it here AND in the database together, or the
-    // next run creates a new session and lists this one as a leftover.
-    title: "Workshop 2 (2nd session) — to be announced",
-    startsAt: at("18", "12:00"),
-    endsAt: at("18", "13:00"),
-    audience: "Assigned",
-    ...RULES,
-  },
-  {
-    // The programme lists "2:00 – --:-- PM"; its last item ends at 16:50.
-    // 17:00 until the real end time is known.
     title: "Closing Ceremony",
     location: ROOM.ceremonies,
-    startsAt: at("18", "14:00"),
+    startsAt: at("18", "15:00"),
     endsAt: at("18", "17:00"),
     audience: "Everyone",
     ...RULES,
@@ -217,7 +222,11 @@ async function main() {
     const rest = { ...s };
     delete rest.status;
     const saved = existing
-      ? await prisma.session.update({ where: { id: existing.id }, data: rest })
+      ? await prisma.session.update({
+          where: { id: existing.id },
+          // A session the programme gives no room loses any old one.
+          data: { location: null, challenge: false, teamActivity: null, ...rest },
+        })
       : await prisma.session.create({ data: { ...s, status: "Scheduled" } });
 
     console.log(
@@ -225,14 +234,31 @@ async function main() {
     );
   }
 
-  // Sessions in the database that are not (or no longer) in the programme —
-  // usually leftovers from testing. Listed, never deleted: they may hold
-  // attendance that someone wants to keep.
+  // Sessions in the database that are no longer in the programme (renamed or
+  // dropped). Left Scheduled they would open by themselves at their old time
+  // — and closing an old "everyone" session would charge everyone absent. So
+  // an empty one (no scans, penalties, roster or officer) is deleted; one
+  // holding any data is only listed, for a person to decide.
   const titles = SESSIONS.map((s) => s.title);
-  const stray = await prisma.session.findMany({
+  const gone = await prisma.session.findMany({
     where: { title: { notIn: titles } },
-    include: { _count: { select: { presences: true, penalties: true } } },
+    include: {
+      _count: { select: { presences: true, penalties: true, expected: true } },
+    },
   });
+  const stray = [];
+  for (const s of gone) {
+    const officers = await prisma.scannerAssignment.count({ where: { sessionId: s.id } });
+    const empty =
+      s._count.presences + s._count.penalties + s._count.expected + officers === 0;
+    if (empty) {
+      await prisma.session.delete({ where: { id: s.id } });
+      console.log(`removed  ${s.title.padEnd(50)} no longer in the programme (empty)`);
+    } else {
+      stray.push(s);
+    }
+  }
+
   // Programme sessions that already have scans or are not Scheduled before
   // the event — test data that would otherwise count on the day.
   const touched = await prisma.session.findMany({

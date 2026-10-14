@@ -22,36 +22,58 @@ type Db = Tx | typeof prisma;
 /** A participant who is actually attending the congress. */
 export const attendeeWhere = { paid: true, banned: false } as const;
 
+/**
+ * Members of the website's selected teams for an activity (FABLAB,
+ * COMPETITION, CHALLENGE). Read-only raw SQL: the website's tables are not
+ * in this app's Prisma schema, and must never be.
+ */
+async function teamMemberIds(
+  db: Db,
+  activity: string,
+  participantId?: string
+): Promise<string[]> {
+  const rows = await db.$queryRaw<{ participant_id: string }[]>`
+    SELECT DISTINCT m.participant_id
+      FROM public.team_memberships m
+      JOIN public.teams t ON t.id = m.team_id
+     WHERE t.activity::text = ${activity}
+       AND t.selected
+       AND (${participantId ?? null}::text IS NULL OR m.participant_id = ${participantId ?? null}::text)`;
+  return rows.map((r) => r.participant_id);
+}
+
 export async function expectedIds(db: Db, session: Session): Promise<Set<string>> {
-  const rows =
-    session.audience === "Everyone"
-      ? (await db.participant.findMany({ where: attendeeWhere, select: { id: true } })).map(
-          (p) => p.id
-        )
-      : (
-          await db.sessionParticipant.findMany({
-            where: { sessionId: session.id },
-            select: { participantId: true },
-          })
-        ).map((r) => r.participantId);
-  return new Set(rows);
+  if (session.audience === "Everyone") {
+    const rows = await db.participant.findMany({ where: attendeeWhere, select: { id: true } });
+    return new Set(rows.map((p) => p.id));
+  }
+  const [listed, team] = await Promise.all([
+    db.sessionParticipant.findMany({
+      where: { sessionId: session.id },
+      select: { participantId: true },
+    }),
+    session.teamActivity ? teamMemberIds(db, session.teamActivity) : Promise.resolve([]),
+  ]);
+  return new Set([...listed.map((r) => r.participantId), ...team]);
+}
+
+/** The challenge sessions that overlap this one in time. */
+function overlappingChallenges(db: Db, session: Session) {
+  return db.session.findMany({
+    where: {
+      challenge: true,
+      id: { not: session.id },
+      startsAt: { lt: session.endsAt },
+      endsAt: { gt: session.startsAt },
+    },
+  });
 }
 
 export async function excusedIds(db: Db, session: Session): Promise<Set<string>> {
   if (session.challenge) return new Set(); // a challenge doesn't excuse from itself
-  const rows = await db.sessionParticipant.findMany({
-    where: {
-      session: {
-        challenge: true,
-        id: { not: session.id },
-        startsAt: { lt: session.endsAt },
-        endsAt: { gt: session.startsAt },
-      },
-    },
-    select: { participantId: true },
-    distinct: ["participantId"],
-  });
-  return new Set(rows.map((r) => r.participantId));
+  const challenges = await overlappingChallenges(db, session);
+  const rosters = await Promise.all(challenges.map((c) => expectedIds(db, c)));
+  return new Set(rosters.flatMap((r) => [...r]));
 }
 
 export interface Accountability {
@@ -91,34 +113,50 @@ export function notChargedReason(
   return who.audience === "Assigned" ? "not on this session's roster" : null;
 }
 
+/**
+ * Whether a session has a list yet: linked to website teams, or with people
+ * listed by hand. Until it does, nobody can be "not registered" for it —
+ * otherwise every scan at a workshop whose roster isn't loaded would raise
+ * the alarm.
+ */
+export async function hasList(db: Db, session: Session): Promise<boolean> {
+  if (session.audience === "Everyone") return false;
+  if (session.teamActivity) return true;
+  return (await db.sessionParticipant.count({ where: { sessionId: session.id } })) > 0;
+}
+
+/** For the roster: on the list (true), not on it (false), or no list (undefined). */
+export function registeredFor(who: Accountability, participantId: string): boolean | undefined {
+  if (who.audience === "Everyone" || who.expected.size === 0) return undefined;
+  return who.expected.has(participantId);
+}
+
 /** The same answers for one participant, without loading everyone. */
 export async function standingOf(
   db: Db,
   session: Session,
   participantId: string
 ): Promise<{ expected: boolean; excused: boolean; mustAttend: boolean; answers: boolean }> {
-  const [isExpected, onChallenge] = await Promise.all([
+  const onRoster = async (s: Session): Promise<boolean> => {
+    const [listed, team] = await Promise.all([
+      db.sessionParticipant.count({ where: { sessionId: s.id, participantId } }),
+      s.teamActivity ? teamMemberIds(db, s.teamActivity, participantId) : Promise.resolve([]),
+    ]);
+    return listed > 0 || team.length > 0;
+  };
+
+  const [expected, excused] = await Promise.all([
     session.audience === "Everyone"
-      ? db.participant.count({ where: { id: participantId, ...attendeeWhere } })
-      : db.sessionParticipant.count({
-          where: { sessionId: session.id, participantId },
-        }),
+      ? db.participant
+          .count({ where: { id: participantId, ...attendeeWhere } })
+          .then((n) => n > 0)
+      : onRoster(session),
     session.challenge
-      ? Promise.resolve(0)
-      : db.sessionParticipant.count({
-          where: {
-            participantId,
-            session: {
-              challenge: true,
-              id: { not: session.id },
-              startsAt: { lt: session.endsAt },
-              endsAt: { gt: session.startsAt },
-            },
-          },
-        }),
+      ? Promise.resolve(false)
+      : overlappingChallenges(db, session).then(async (cs) =>
+          (await Promise.all(cs.map(onRoster))).some(Boolean)
+        ),
   ]);
-  const expected = isExpected > 0;
-  const excused = onChallenge > 0;
   return {
     expected,
     excused,

@@ -125,7 +125,12 @@ export default function AttendanceRoster({
               <li key={p.id} className="roster-row">
                 <span className="roster-who">
                   <span className="roster-name">{fullName(p)}</span>
-                  <span className="roster-sb">{p.sb ?? "No student branch"}</span>
+                  <span className="roster-sb">
+                    {p.sb ?? "No student branch"}
+                    {(p as RosterParticipant).registered === false && (
+                      <span className="roster-flag">Not registered</span>
+                    )}
+                  </span>
                 </span>
                 <RowMeta
                   tab={tab}

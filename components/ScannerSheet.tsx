@@ -142,6 +142,11 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
 
     setResult(scan);
     if (scan.stats) setStats(scan.stats);
+    // Someone not on this session's list: make the phone buzz too, so a
+    // door volunteer looking up from the screen still notices.
+    if (scan.registered === false && scan.action === "CheckedIn") {
+      navigator.vibrate?.([200, 100, 200]);
+    }
 
     if (scan.action !== "Duplicate") {
       setMoves((prev) =>
@@ -153,6 +158,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
               scan.inside ? scan.presence.checkInAt : scan.presence.checkOutAt
             ),
             answers: scan.notCharged === null,
+            registered: scan.registered !== false,
           },
         ])
       );
@@ -169,7 +175,12 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
     const inside: RosterParticipant[] = [];
     const onBreak: RosterParticipant[] = [];
     for (const m of moves.values()) {
-      const entry = { ...m.participant, since: m.since, answers: m.answers };
+      const entry = {
+        ...m.participant,
+        since: m.since,
+        answers: m.answers,
+        registered: m.registered,
+      };
       (m.inside ? inside : onBreak).push(entry);
     }
 
@@ -261,15 +272,21 @@ function ScanBanner({ result }: { result: ScanResult }) {
   const name =
     `${result.participant.user.name} ${result.participant.user.lastName}`.trim();
 
-  const variant =
-    result.action === "CheckedIn"
+  // Checking in someone who is not on this session's list is the one scan
+  // the door has to stop and look at.
+  const unregistered = result.registered === false && result.action === "CheckedIn";
+
+  const variant = unregistered
+    ? "alert"
+    : result.action === "CheckedIn"
       ? "in"
       : result.action === "CheckedOut"
         ? "out"
         : "dup";
 
-  const title =
-    result.action === "CheckedIn"
+  const title = unregistered
+    ? "Not registered for this session"
+    : result.action === "CheckedIn"
       ? result.breakTaken
         ? "Back from a break"
         : result.lateMinutes !== null
@@ -323,7 +340,14 @@ function ScanBanner({ result }: { result: ScanResult }) {
         </p>
       )}
 
-      {result.notCharged && result.action !== "Duplicate" && (
+      {unregistered && (
+        <p className="result-detail">
+          They are not on this session&apos;s list. The scan was recorded; check
+          with a manager before letting them in.
+        </p>
+      )}
+
+      {result.notCharged && result.action !== "Duplicate" && !unregistered && (
         <p className="result-detail">Not charged here: {result.notCharged}.</p>
       )}
 

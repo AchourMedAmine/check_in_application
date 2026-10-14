@@ -6,7 +6,7 @@ import { requireAssigned, requireScanner } from "@/lib/scanners";
 import { getSessionOrThrow } from "@/lib/attendance/session";
 import { getSessionStats } from "@/lib/attendance/scan";
 import { TX_OPTIONS } from "@/lib/attendance/locks";
-import { accountability, answersFor } from "@/lib/attendance/expected";
+import { accountability, answersFor, registeredFor } from "@/lib/attendance/expected";
 
 const withUser = {
   user: { select: { id: true, email: true, name: true, lastName: true } },
@@ -86,6 +86,7 @@ export async function GET(
           inside,
           since: (inside ? p.checkInAt : p.checkOutAt!).toISOString(),
           answers: who ? answersFor(who, p.participantId) : true,
+          registered: who ? registeredFor(who, p.participantId) !== false : true,
         },
       ];
     });

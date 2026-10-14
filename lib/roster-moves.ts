@@ -12,6 +12,8 @@ export interface RosterMove {
   since: string;
   /** False when this session never charges them (excused, not on roster). */
   answers: boolean;
+  /** False when they are not on this session's list. */
+  registered: boolean;
 }
 
 /**
