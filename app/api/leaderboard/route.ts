@@ -9,7 +9,9 @@ import { requireScanner } from "@/lib/scanners";
 // Points lost per student branch, with the individual deductions behind them.
 export async function GET(req: NextRequest) {
   return handleApiRequest(async () => {
-    await requireScanner(req);
+    // Branch standings are for managers (and later the admin dashboard),
+    // not for the officers at the doors.
+    await requireScanner(req, { role: "Manager" });
     const sessionId =
       req.nextUrl.searchParams.get("sessionId") ?? undefined;
 

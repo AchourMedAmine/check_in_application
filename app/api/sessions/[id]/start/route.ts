@@ -1,18 +1,20 @@
 import { NextRequest } from "next/server";
 import { handleApiRequest } from "@/lib/api-handler";
-import { requireScanner } from "@/lib/scanners";
+import { requireAssigned, requireScanner } from "@/lib/scanners";
 import { markStarted, undoStart } from "@/lib/attendance/session";
 
 // POST /api/sessions/[id]/start — the session really began (the moderator or
 // instructor started). Any scanner: the person at the door is the one who
-// sees it. Lateness is measured from this moment.
+// sees it — as long as it is their assigned session. Lateness is measured
+// from this moment.
 export async function POST(
   req: NextRequest,
   ctx: RouteContext<"/api/sessions/[id]/start">
 ) {
   return handleApiRequest(async () => {
-    await requireScanner(req);
+    const scanner = await requireScanner(req);
     const { id } = await ctx.params;
+    await requireAssigned(scanner, id);
     return markStarted(id);
   }, req);
 }

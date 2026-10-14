@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { useFetch } from "@/hooks/useFetch";
+import { useMe } from "@/hooks/useMe";
 import { Leaderboard } from "@/lib/types";
 
 /** What the participant did, in the congress rules' own words. */
@@ -37,7 +38,18 @@ export default function StandingsPage() {
     };
   }, [fetch]);
 
+  const me = useMe();
   const max = Math.max(1, ...(data?.standings ?? []).map((s) => s.points));
+
+  // The server refuses officers too; this just says so plainly.
+  if (me && me.role !== "Manager") {
+    return (
+      <div className="space-y-3">
+        <h1 className="page-title">Branch standings</h1>
+        <p className="page-lede">Only managers can see the standings.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">

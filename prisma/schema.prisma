@@ -369,3 +369,17 @@ model Scanner {
   @@map("scanners")
   @@schema("checkin")
 }
+
+/// Which sessions an officer (a Scanner account) covers. They only see, scan
+/// into and read the roster of these; Managers are not limited. Created by
+/// prisma/sql/006_scanner_assignments.sql.
+model ScannerAssignment {
+  scannerId String   @map("scanner_id")
+  sessionId String   @map("session_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([scannerId, sessionId])
+  @@index([sessionId], map: "scanner_assignments_session_idx")
+  @@map("scanner_assignments")
+  @@schema("checkin")
+}

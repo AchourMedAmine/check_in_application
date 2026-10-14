@@ -5,7 +5,7 @@ import { ScanQRInput } from "@/lib/types";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { getActiveSession, getSessionOrThrow } from "@/lib/attendance/session";
 import { recordScan, getSessionStats } from "@/lib/attendance/scan";
-import { requireScanner } from "@/lib/scanners";
+import { requireAssigned, requireScanner } from "@/lib/scanners";
 
 // name / lastName / email live on `users`, joined via participants.user_id
 const withUser = {
@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
     const session = body.sessionId
       ? await getSessionOrThrow(body.sessionId)
       : await getActiveSession();
+
+    await requireAssigned(scanner, session.id);
 
     if (session.status !== "Open") {
       throw new ValidationError(`Session "${session.title}" is not open`);
@@ -71,10 +73,11 @@ export async function POST(req: NextRequest) {
   }, req);
 }
 
-// GET /api/scan — all registered participants (handy for testing without badges)
+// GET /api/scan — all registered participants (handy for testing without
+// badges). Managers only: officers have no reason to download the list.
 export async function GET(req: NextRequest) {
   return handleApiRequest(async () => {
-    await requireScanner(req);
+    await requireScanner(req, { role: "Manager" });
     return prisma.participant.findMany({
       include: withUser,
       orderBy: { user: { lastName: "asc" } },

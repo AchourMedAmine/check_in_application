@@ -115,3 +115,31 @@ export async function requireScanner(
 
   return scanner;
 }
+
+/**
+ * The sessions this account works: every session for a Manager, only the
+ * assigned ones for an officer. Null means "all".
+ */
+export async function sessionScope(scanner: Scanner): Promise<string[] | null> {
+  if (scanner.role === "Manager") return null;
+  const rows = await prisma.scannerAssignment.findMany({
+    where: { scannerId: scanner.id },
+    select: { sessionId: true },
+  });
+  return rows.map((r) => r.sessionId);
+}
+
+/**
+ * Refuses an officer working a session they are not assigned to — scanning,
+ * reading its roster, marking it started. Enforced here, on the server, not
+ * only by what the screen shows.
+ */
+export async function requireAssigned(scanner: Scanner, sessionId: string): Promise<void> {
+  if (scanner.role === "Manager") return;
+  const assigned = await prisma.scannerAssignment.findUnique({
+    where: { scannerId_sessionId: { scannerId: scanner.id, sessionId } },
+  });
+  if (!assigned) {
+    throw new ForbiddenError("You are not assigned to this session — ask a manager");
+  }
+}

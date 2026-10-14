@@ -123,6 +123,33 @@ export function LiveSession({
   );
 }
 
+/**
+ * An officer's next session while none of theirs is live: where to be, and
+ * when the scanner will open by itself.
+ */
+export function NextSession({ session }: { session: SessionWithStats }) {
+  const doors = new Date(new Date(session.startsAt).getTime() - 30 * 60_000);
+  return (
+    <section className="live" aria-labelledby={`next-${session.id}`}>
+      <div>
+        <span className="live-flag live-flag--next">
+          <span className="dia dia--amber" aria-hidden />
+          Next for you
+        </span>
+        <h2 id={`next-${session.id}`} className="live-title mt-2">
+          {session.title}
+        </h2>
+        <p className="live-where">{where(session)}</p>
+      </div>
+      <p className="text-[var(--ink-2)]">
+        Be at the door by{" "}
+        <strong className="text-[var(--ink)]">{hm(doors)}</strong>. The scanner
+        opens by itself then.
+      </p>
+    </section>
+  );
+}
+
 /** One line of the programme. */
 export function AgendaRow({
   session,

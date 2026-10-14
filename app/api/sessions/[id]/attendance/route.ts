@@ -4,7 +4,7 @@ import { handleApiRequest } from "@/lib/api-handler";
 import { getSessionOrThrow } from "@/lib/attendance/session";
 import { settleBreaks } from "@/lib/attendance/settle";
 import { accountability, answersFor } from "@/lib/attendance/expected";
-import { requireScanner } from "@/lib/scanners";
+import { requireAssigned, requireScanner } from "@/lib/scanners";
 
 const withUser = {
   user: { select: { id: true, email: true, name: true, lastName: true } },
@@ -17,8 +17,9 @@ export async function GET(
   ctx: RouteContext<"/api/sessions/[id]/attendance">
 ) {
   return handleApiRequest(async () => {
-    await requireScanner(req);
+    const scanner = await requireScanner(req);
     const { id } = await ctx.params;
+    await requireAssigned(scanner, id);
     const session = await getSessionOrThrow(id);
 
     // Breaks go over on the clock, not on a scan. Settling here means the

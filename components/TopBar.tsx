@@ -6,8 +6,9 @@ import { useState } from "react";
 import { useMe } from "@/hooks/useMe";
 
 const NAV = [
-  { href: "/", label: "Sessions" },
-  { href: "/standings", label: "Standings" },
+  { href: "/", label: "Sessions", managersOnly: false },
+  // Standings are for managers (and the admin dashboard), not the doors.
+  { href: "/standings", label: "Standings", managersOnly: true },
 ];
 
 /**
@@ -51,7 +52,9 @@ export default function TopBar() {
         </a>
 
         <nav className="topbar-nav" aria-label="Pages">
-          {NAV.map((item) => (
+          {NAV.filter(
+            (item) => !item.managersOnly || me?.role === "Manager",
+          ).map((item) => (
             <a
               key={item.href}
               href={item.href}

@@ -7,6 +7,13 @@
  *   npm run scanners -- role <username> Scanner|Manager
  *   npm run scanners -- disable <username>
  *   npm run scanners -- enable <username>
+ *   npm run scanners -- assign <username> "<session>"
+ *   npm run scanners -- unassign <username> "<session>"
+ *   npm run scanners -- assignments
+ *
+ * An officer (Scanner) only sees and scans their assigned sessions; a
+ * Manager sees every session. "<session>" is the title or any part of it
+ * that matches one session only ("Opening", "IES").
  *
  * Passwords are generated, printed ONCE, and stored only as a scrypt hash.
  * Hand them over in person; they cannot be recovered, only reset.
@@ -30,7 +37,10 @@ const USAGE = `usage:
   npm run scanners -- reset-password <username>
   npm run scanners -- role <username> Scanner|Manager
   npm run scanners -- disable <username>
-  npm run scanners -- enable <username>`;
+  npm run scanners -- enable <username>
+  npm run scanners -- assign <username> "<session>"
+  npm run scanners -- unassign <username> "<session>"
+  npm run scanners -- assignments`;
 
 function fail(message: string): never {
   console.error(message);
@@ -47,6 +57,24 @@ async function find(username: string | undefined) {
   if (!scanner) fail(`no scanner "${normalize(username)}"`);
   return scanner;
 }
+
+/** The one session whose title is, or contains, `text` (case-insensitive). */
+async function findSession(text: string | undefined) {
+  if (!text) fail(USAGE);
+  const needle = text.trim().toLowerCase();
+  const all = await prisma.session.findMany({ orderBy: { startsAt: "asc" } });
+  const exact = all.filter((s) => s.title.toLowerCase() === needle);
+  const matches = exact.length ? exact : all.filter((s) => s.title.toLowerCase().includes(needle));
+  if (matches.length === 1) return matches[0];
+  if (matches.length === 0) fail(`no session matches "${text}" — run: npm run scanners -- assignments`);
+  fail(
+    `"${text}" matches ${matches.length} sessions, be more precise:\n` +
+      matches.map((s) => `  ${s.title}`).join("\n")
+  );
+}
+
+const when = (d: Date) =>
+  d.toLocaleString("en-GB", { timeZone: "Africa/Tunis", weekday: "short", hour: "2-digit", minute: "2-digit" });
 
 function printPassword(username: string, password: string) {
   console.log(`\n  username: ${username}\n  password: ${password}\n`);
@@ -140,6 +168,44 @@ async function main() {
           ? `"${scanner.username}" disabled — locked out on their next request`
           : `"${scanner.username}" enabled`
       );
+    }
+
+    case "assign":
+    case "unassign": {
+      const scanner = await find(args[0]);
+      const session = await findSession(args[1]);
+      const key = { scannerId: scanner.id, sessionId: session.id };
+      if (command === "assign") {
+        await prisma.scannerAssignment.upsert({
+          where: { scannerId_sessionId: key },
+          update: {},
+          create: key,
+        });
+        if (scanner.role === "Manager") {
+          console.log("(managers see every session anyway — the assignment is kept for the record)");
+        }
+        return console.log(`"${scanner.username}" now covers ${session.title} (${when(session.startsAt)})`);
+      }
+      const { count } = await prisma.scannerAssignment.deleteMany({ where: key });
+      return console.log(
+        count ? `"${scanner.username}" no longer covers ${session.title}` : `"${scanner.username}" was not assigned to ${session.title}`
+      );
+    }
+
+    case "assignments": {
+      const [sessions, scanners, links] = await Promise.all([
+        prisma.session.findMany({ orderBy: { startsAt: "asc" } }),
+        prisma.scanner.findMany(),
+        prisma.scannerAssignment.findMany(),
+      ]);
+      const name = new Map(scanners.map((s) => [s.id, s.username]));
+      for (const s of sessions) {
+        const who = links.filter((l) => l.sessionId === s.id).map((l) => name.get(l.scannerId) ?? "?");
+        console.log(`${when(s.startsAt).padEnd(10)} ${s.title.padEnd(52)} ${who.length ? who.join(", ") : "— nobody assigned"}`);
+      }
+      const idle = scanners.filter((s) => s.role === "Scanner" && s.active && !links.some((l) => l.scannerId === s.id));
+      if (idle.length) console.log(`\nofficers with no session: ${idle.map((s) => s.username).join(", ")}`);
+      return;
     }
 
     default:

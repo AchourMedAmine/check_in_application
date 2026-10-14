@@ -372,6 +372,10 @@ button {
   color: var(--green);
 }
 
+.live-flag--next {
+  color: var(--amber);
+}
+
 .live-head {
   display: flex;
   justify-content: space-between;

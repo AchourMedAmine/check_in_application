@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { handleApiRequest } from "@/lib/api-handler";
 import { ValidationError } from "@/lib/errors";
-import { requireScanner } from "@/lib/scanners";
+import { requireAssigned, requireScanner } from "@/lib/scanners";
 import { getSessionOrThrow } from "@/lib/attendance/session";
 import { getSessionStats } from "@/lib/attendance/scan";
 import { TX_OPTIONS } from "@/lib/attendance/locks";
@@ -33,8 +33,9 @@ export async function GET(
   ctx: RouteContext<"/api/sessions/[id]/changes">
 ) {
   return handleApiRequest(async () => {
-    await requireScanner(req);
+    const scanner = await requireScanner(req);
     const { id } = await ctx.params;
+    await requireAssigned(scanner, id);
     const session = await getSessionOrThrow(id);
 
     const now = new Date();
