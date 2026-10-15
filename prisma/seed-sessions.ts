@@ -57,21 +57,14 @@ const ATTENDANCE_ONLY = { mandatory: false, breakAllowanceMinutes: 15, penaltyPo
 const SESSIONS: Prisma.SessionCreateInput[] = [
   // ── Friday 16/10 — Fablab hackathon (attendance only) ─────────────────
   {
-    title: "Hackathon — Session 1",
+    // One session for the whole hackathon, 11:00 to 01:00 the next night (it
+    // replaced "Session 1" and "Session 2"). Attendance only.
+    title: "Hackathon",
     location: ROOM.fablab,
     // The list: every member of a selected Fablab team on the website.
     teamActivity: "FABLAB",
-    startsAt: at("16", "15:00"),
-    endsAt: at("16", "19:00"),
-    audience: "Assigned",
-    ...ATTENDANCE_ONLY,
-  },
-  {
-    title: "Hackathon — Session 2",
-    location: ROOM.fablab,
-    teamActivity: "FABLAB",
-    startsAt: at("16", "20:30"),
-    endsAt: at("16", "23:00"),
+    startsAt: at("16", "11:00"),
+    endsAt: at("17", "01:00"),
     audience: "Assigned",
     ...ATTENDANCE_ONLY,
   },
@@ -214,7 +207,45 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
   },
 ];
 
+/**
+ * Sessions that were merged or renamed: new title ← old titles. The first old
+ * session found becomes the new one (keeping its id, officers and scans); the
+ * others hand their officers over and are then removed by the clean-up below
+ * if empty.
+ */
+const MERGED: Record<string, string[]> = {
+  Hackathon: ["Hackathon — Session 1", "Hackathon — Session 2"],
+};
+
+async function carryOver() {
+  for (const [title, oldTitles] of Object.entries(MERGED)) {
+    const olds = await prisma.session.findMany({ where: { title: { in: oldTitles } } });
+    if (olds.length === 0) continue;
+
+    let target = await prisma.session.findFirst({ where: { title } });
+    if (!target) {
+      target = await prisma.session.update({ where: { id: olds[0].id }, data: { title } });
+      console.log(`renamed  ${olds[0].title} → ${title}`);
+    }
+
+    for (const old of olds.filter((o) => o.id !== target.id)) {
+      const officers = await prisma.scannerAssignment.findMany({ where: { sessionId: old.id } });
+      for (const a of officers) {
+        await prisma.scannerAssignment.upsert({
+          where: { scannerId_sessionId: { scannerId: a.scannerId, sessionId: target.id } },
+          update: {},
+          create: { scannerId: a.scannerId, sessionId: target.id },
+        });
+      }
+      await prisma.scannerAssignment.deleteMany({ where: { sessionId: old.id } });
+      if (officers.length) console.log(`moved    ${officers.length} officer(s) from ${old.title} to ${title}`);
+    }
+  }
+}
+
 async function main() {
+  await carryOver();
+
   for (const s of SESSIONS) {
     const existing = await prisma.session.findFirst({ where: { title: s.title } });
 
