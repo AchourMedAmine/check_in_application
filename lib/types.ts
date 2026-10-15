@@ -38,7 +38,8 @@ export interface ScanResult {
     "id" | "title" | "breakAllowanceMinutes" | "audience" | "mandatory"
   >;
   action: ScanAction;
-  presence: Presence;
+  /** Null when the scan was Refused: nothing was recorded. */
+  presence: Presence | null;
   /** State after the scan: true = in the room, false = out. */
   inside: boolean;
   /** Set when a check-in ended a break. */
@@ -55,6 +56,8 @@ export interface ScanResult {
   notCharged: string | null;
   /** Assigned sessions: on the list or not. Null for Everyone sessions. */
   registered: boolean | null;
+  /** Set when the scan was Refused: why they may not come in. */
+  refusedReason: "unpaid" | "banned" | "not-registered" | null;
   /** Null when the scan was saved but the figures could not be read. */
   stats: SessionStats | null;
 }

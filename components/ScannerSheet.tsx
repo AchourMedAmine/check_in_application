@@ -142,20 +142,21 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
 
     setResult(scan);
     if (scan.stats) setStats(scan.stats);
-    // Someone not on this session's list: make the phone buzz too, so a
-    // door volunteer looking up from the screen still notices.
-    if (scan.registered === false && scan.action === "CheckedIn") {
+    // Someone not on this session's list was turned away: make the phone
+    // buzz too, so a door volunteer looking up from the screen still notices.
+    if (scan.action === "Refused") {
       navigator.vibrate?.([200, 100, 200]);
     }
 
-    if (scan.action !== "Duplicate") {
+    if (scan.presence && (scan.action === "CheckedIn" || scan.action === "CheckedOut")) {
+      const presence = scan.presence;
       setMoves((prev) =>
         mergeMoves(prev, [
           {
             participant: scan.participant,
             inside: scan.inside,
             since: String(
-              scan.inside ? scan.presence.checkInAt : scan.presence.checkOutAt
+              scan.inside ? presence.checkInAt : presence.checkOutAt
             ),
             answers: scan.notCharged === null,
             registered: scan.registered !== false,
@@ -272,11 +273,11 @@ function ScanBanner({ result }: { result: ScanResult }) {
   const name =
     `${result.participant.user.name} ${result.participant.user.lastName}`.trim();
 
-  // Checking in someone who is not on this session's list is the one scan
-  // the door has to stop and look at.
-  const unregistered = result.registered === false && result.action === "CheckedIn";
+  // Someone not on this session's list is the one scan the door has to stop
+  // at: they are not let in, and nothing was recorded.
+  const refused = result.action === "Refused";
 
-  const variant = unregistered
+  const variant = refused
     ? "alert"
     : result.action === "CheckedIn"
       ? "in"
@@ -284,8 +285,12 @@ function ScanBanner({ result }: { result: ScanResult }) {
         ? "out"
         : "dup";
 
-  const title = unregistered
-    ? "Not registered for this session"
+  const title = refused
+    ? result.refusedReason === "unpaid"
+      ? "Not paid — do not let them in"
+      : result.refusedReason === "banned"
+        ? "Banned — do not let them in"
+        : "Not registered — do not let them in"
     : result.action === "CheckedIn"
       ? result.breakTaken
         ? "Back from a break"
@@ -340,14 +345,18 @@ function ScanBanner({ result }: { result: ScanResult }) {
         </p>
       )}
 
-      {unregistered && (
+      {refused && (
         <p className="result-detail">
-          They are not on this session&apos;s list. The scan was recorded; check
-          with a manager before letting them in.
+          {result.refusedReason === "not-registered"
+            ? "They are not on this session's list, so they"
+            : result.refusedReason === "banned"
+              ? "They are banned from the congress, so they"
+              : "Their registration is not paid, so they"}{" "}
+          were not checked in and are not counted.
         </p>
       )}
 
-      {result.notCharged && result.action !== "Duplicate" && !unregistered && (
+      {result.notCharged && result.action !== "Duplicate" && !refused && (
         <p className="result-detail">Not charged here: {result.notCharged}.</p>
       )}
 

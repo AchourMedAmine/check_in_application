@@ -15,7 +15,7 @@ import { chargeBreaks } from "./settle";
  * `check_out_at` filled in on exit. A participant with an open row (no
  * check-out) is inside; one whose latest row is closed is on a break.
  */
-export type ScanAction = "CheckedIn" | "CheckedOut" | "Duplicate";
+export type ScanAction = "CheckedIn" | "CheckedOut" | "Duplicate" | "Refused";
 
 /**
  * A scan landing within this window of the previous one is treated as the
@@ -27,7 +27,8 @@ export const DUPLICATE_WINDOW_MS = 10_000;
 
 export interface ScanOutcome {
   action: ScanAction;
-  presence: Presence;
+  /** The interval touched; null when the scan was Refused (nothing recorded). */
+  presence: Presence | null;
   /** The state the participant is in after this scan. */
   inside: boolean;
   /** Set when a check-in ended a break: how long they were out. */
@@ -48,6 +49,8 @@ export interface ScanOutcome {
    * Everyone session, or one whose list isn't loaded yet.
    */
   registered: boolean | null;
+  /** Set when the scan was Refused: why they may not come in. */
+  refusedReason: "unpaid" | "banned" | "not-registered" | null;
 }
 
 /**
@@ -117,6 +120,7 @@ async function applyScan(
     notCharged: session.mandatory ? notChargedReason(session, standing) : null,
     // No list yet (a workshop whose roster isn't loaded): nobody is flagged.
     registered: listed ? standing.expected : null,
+    refusedReason: null as ScanOutcome["refusedReason"],
   };
 
   const open = await tx.presence.findFirst({
@@ -173,6 +177,24 @@ async function applyScan(
       penalty: null,
       insideMinutes: null,
       ...quiet,
+    };
+  }
+
+  // Turned away at the door — no check-in recorded, nothing counted:
+  // unpaid or banned participants at every session (they are not coming),
+  // and at a session with a list, anyone not on it. Leaving is never
+  // refused — that branch is above.
+  const refusedReason = standing.notAttending ?? (listed && !standing.expected ? "not-registered" : null);
+  if (refusedReason) {
+    return {
+      action: "Refused",
+      presence: null,
+      inside: false,
+      breakTaken: null,
+      penalty: null,
+      insideMinutes: null,
+      ...quiet,
+      refusedReason,
     };
   }
 
@@ -243,6 +265,7 @@ async function applyScan(
     excused: standing.excused,
     notCharged: quiet.notCharged,
     registered: quiet.registered,
+    refusedReason: null,
   };
 }
 
