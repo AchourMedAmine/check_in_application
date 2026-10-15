@@ -14,6 +14,8 @@ export interface RosterMove {
   answers: boolean;
   /** False when they are not on this session's list. */
   registered: boolean;
+  /** Their team at a team-linked session (the hackathon). */
+  team?: string;
 }
 
 /**

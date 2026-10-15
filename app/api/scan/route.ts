@@ -5,6 +5,7 @@ import { ScanQRInput } from "@/lib/types";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { getActiveSession, getSessionOrThrow } from "@/lib/attendance/session";
 import { recordScan, getSessionStats } from "@/lib/attendance/scan";
+import { teamOf } from "@/lib/attendance/teams";
 import { requireAssigned, requireScanner } from "@/lib/scanners";
 
 // name / lastName / email live on `users`, joined via participants.user_id
@@ -53,10 +54,17 @@ export async function POST(req: NextRequest) {
     // The scan is committed at this point. Failing the request now would
     // tell staff it didn't go through, and a re-scan would flip the
     // participant straight back — so the figures are best-effort.
-    const stats = await getSessionStats(session).catch((err) => {
-      console.error("Scan recorded, but stats failed:", err);
-      return null;
-    });
+    const [stats, team] = await Promise.all([
+      getSessionStats(session).catch((err) => {
+        console.error("Scan recorded, but stats failed:", err);
+        return null;
+      }),
+      // The hackathon door shows the team too. Best-effort, like the stats.
+      teamOf(session, participant.id).catch((err) => {
+        console.error("Team lookup failed:", err);
+        return null;
+      }),
+    ]);
 
     return {
       participant,
@@ -68,6 +76,7 @@ export async function POST(req: NextRequest) {
         mandatory: session.mandatory,
       },
       ...outcome,
+      team,
       stats,
     };
   }, req);

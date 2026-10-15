@@ -4,6 +4,7 @@ import { handleApiRequest } from "@/lib/api-handler";
 import { getSessionOrThrow } from "@/lib/attendance/session";
 import { settleBreaks } from "@/lib/attendance/settle";
 import { accountability, answersFor, registeredFor } from "@/lib/attendance/expected";
+import { teamNames } from "@/lib/attendance/teams";
 import { requireAssigned, requireScanner } from "@/lib/scanners";
 
 const withUser = {
@@ -48,7 +49,11 @@ export async function GET(
 
     // Who is held to account here — the same answer as the absence penalty,
     // so this list is exactly who would be charged as absent right now.
-    const who = await accountability(prisma, session);
+    const [who, teams] = await Promise.all([
+      accountability(prisma, session),
+      // The hackathon roster names each person's team.
+      teamNames(session, seenIds),
+    ]);
     const missingIds = [...who.mustAttend].filter((id) => !latest.has(id));
 
     const [seen, missing] = await Promise.all([
@@ -75,6 +80,7 @@ export async function GET(
               since: p.checkInAt,
               answers: answersFor(who, pid),
               registered: registeredFor(who, pid),
+              team: teams.get(pid),
             }
           : null;
       })
@@ -91,6 +97,7 @@ export async function GET(
               since: p.checkOutAt!,
               answers: answersFor(who, pid),
               registered: registeredFor(who, pid),
+              team: teams.get(pid),
             }
           : null;
       })

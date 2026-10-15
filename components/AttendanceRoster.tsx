@@ -126,6 +126,9 @@ export default function AttendanceRoster({
                 <span className="roster-who">
                   <span className="roster-name">{fullName(p)}</span>
                   <span className="roster-sb">
+                    {(p as RosterParticipant).team && (
+                      <span className="roster-team">{(p as RosterParticipant).team}</span>
+                    )}
                     {p.sb ?? "No student branch"}
                     {(p as RosterParticipant).registered === false && (
                       <span className="roster-flag">Not registered</span>

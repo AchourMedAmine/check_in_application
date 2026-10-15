@@ -160,6 +160,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
             ),
             answers: scan.notCharged === null,
             registered: scan.registered !== false,
+            team: scan.team?.name,
           },
         ])
       );
@@ -181,6 +182,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
         since: m.since,
         answers: m.answers,
         registered: m.registered,
+        team: m.team,
       };
       (m.inside ? inside : onBreak).push(entry);
     }
@@ -303,15 +305,24 @@ function ScanBanner({ result }: { result: ScanResult }) {
 
   const allowance = result.session.breakAllowanceMinutes;
   const breakTaken = result.breakTaken;
+  // When it happened — so a result still on screen isn't mistaken for a new one.
+  const at =
+    result.presence &&
+    (result.action === "CheckedOut" ? result.presence.checkOutAt : result.presence.checkInAt);
 
   return (
     <div className={`result result--${variant}`} role="status">
-      <span className="result-title">{title}</span>
+      <div className="result-head">
+        <span className="result-title">{title}</span>
+        {at && <time className="result-time">{format(new Date(at), "HH:mm")}</time>}
+      </div>
       <span className="result-name">{name || "Unnamed participant"}</span>
       <span className="result-who">
         <span>{result.participant.sb ?? "No student branch"}</span>
         <span>{result.participant.participantType}</span>
       </span>
+
+      {result.team && <TeamStrip team={result.team} />}
 
       {result.lateMinutes !== null && (
         <p className="result-detail">
@@ -451,6 +462,33 @@ function StartBar({
         </button>
       )}
       {problem && <span className="start-bar-problem">{problem}</span>}
+    </div>
+  );
+}
+
+/**
+ * The team, at a team-linked session (the hackathon): its name, and one
+ * diamond per teammate who can come — filled for those already inside — so
+ * the door sees at a glance how much of the team has arrived.
+ */
+function TeamStrip({ team }: { team: NonNullable<ScanResult["team"]> }) {
+  const shown = Math.min(team.members, 8);
+  return (
+    <div className="result-team">
+      <div className="result-team-id">
+        <span className="result-team-name">{team.name}</span>
+        {team.axis && <span className="result-team-axis">{team.axis}</span>}
+      </div>
+      <div className="result-team-count">
+        <span className="pips" aria-hidden>
+          {Array.from({ length: shown }, (_, i) => (
+            <span key={i} className={`pip ${i < team.inside ? "pip--in" : ""}`} />
+          ))}
+        </span>
+        <span className="result-team-tally">
+          {team.inside}/{team.members} in
+        </span>
+      </div>
     </div>
   );
 }

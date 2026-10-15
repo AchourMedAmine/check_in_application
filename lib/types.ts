@@ -7,6 +7,7 @@ import type {
 } from "@/generated/prisma/client";
 import type { ScanAction, SessionStats } from "@/lib/attendance/scan";
 import type { BreakEvaluation } from "@/lib/attendance/evaluate-break";
+import type { TeamBadge } from "@/lib/attendance/teams";
 
 // API Response Types
 export interface ApiResponse<T> {
@@ -58,6 +59,8 @@ export interface ScanResult {
   registered: boolean | null;
   /** Set when the scan was Refused: why they may not come in. */
   refusedReason: "unpaid" | "banned" | "not-registered" | null;
+  /** Their team, at a team-linked session (the hackathon); else null. */
+  team: TeamBadge | null;
   /** Null when the scan was saved but the figures could not be read. */
   stats: SessionStats | null;
 }
@@ -74,6 +77,8 @@ export type RosterParticipant = Participant & {
   answers?: boolean;
   /** False for someone scanned into a session whose list they are not on. */
   registered?: boolean;
+  /** Their team at a team-linked session (the hackathon). */
+  team?: string;
 };
 
 export interface AttendanceReport {
@@ -125,6 +130,8 @@ export interface SessionChanges {
     answers: boolean;
     /** False when they are not on this session's list. */
     registered: boolean;
+    /** Their team at a team-linked session. */
+    team?: string;
   }[];
   stats: SessionStats;
   /** When the session really started, as tapped at a door; null = not yet. */

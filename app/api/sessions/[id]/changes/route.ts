@@ -7,6 +7,7 @@ import { getSessionOrThrow } from "@/lib/attendance/session";
 import { getSessionStats } from "@/lib/attendance/scan";
 import { TX_OPTIONS } from "@/lib/attendance/locks";
 import { accountability, answersFor, registeredFor } from "@/lib/attendance/expected";
+import { teamNames } from "@/lib/attendance/teams";
 
 const withUser = {
   user: { select: { id: true, email: true, name: true, lastName: true } },
@@ -56,7 +57,7 @@ export async function GET(
     });
     const ids = touched.map((t) => t.participantId);
 
-    const [latest, participants, stats, who] = await Promise.all([
+    const [latest, participants, stats, who, teams] = await Promise.all([
       // Latest interval per participant decides their current state.
       ids.length
         ? prisma.presence.findMany({
@@ -73,6 +74,7 @@ export async function GET(
         : Promise.resolve([]),
       getSessionStats(session),
       ids.length ? accountability(prisma, session) : Promise.resolve(null),
+      teamNames(session, ids),
     ]);
 
     const byId = new Map(participants.map((p) => [p.id, p]));
@@ -87,6 +89,7 @@ export async function GET(
           since: (inside ? p.checkInAt : p.checkOutAt!).toISOString(),
           answers: who ? answersFor(who, p.participantId) : true,
           registered: who ? registeredFor(who, p.participantId) !== false : true,
+          team: teams.get(p.participantId),
         },
       ];
     });
