@@ -63,11 +63,23 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     location: ROOM.fablab,
     // The list: every member of a selected Fablab team on the website.
     teamActivity: "FABLAB",
+    // Day part, until the dinner break (closed at 18:40).
     startsAt: at("16", "11:00"),
-    endsAt: at("17", "01:00"),
+    endsAt: at("16", "18:40"),
     audience: "Assigned",
     ...ATTENDANCE_ONLY,
     // Breaks may last up to 2 hours — shown as time left, never charged.
+    breakAllowanceMinutes: 120,
+  },
+  {
+    // After dinner: everyone checks in again; dinner is not a break.
+    title: "Hackathon — Night",
+    location: ROOM.fablab,
+    teamActivity: "FABLAB",
+    startsAt: at("16", "21:30"),
+    endsAt: at("17", "01:00"),
+    audience: "Assigned",
+    ...ATTENDANCE_ONLY,
     breakAllowanceMinutes: 120,
   },
 
