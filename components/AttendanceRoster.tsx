@@ -151,6 +151,14 @@ export default function AttendanceRoster({
   );
 }
 
+/** 45 → "45 min", 75 → "1 h 15", 120 → "2 h". */
+function duration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, "0")}`;
+}
+
 function RowMeta({
   tab,
   participant,
@@ -171,6 +179,20 @@ function RowMeta({
 
   if (tab === "inside") {
     return <span className="roster-meta">{minutes} min in</span>;
+  }
+
+  // Attendance-only sessions (the hackathon): the allowance is only a guide.
+  // Show the time left — or how far over — and never any points.
+  if (!mandatory) {
+    const left = allowance - minutes;
+    return (
+      <span className={`roster-meta ${left < 0 ? "roster-meta--over" : ""}`}>
+        <span className={`dia ${left < 0 ? "dia--pink" : "dia--amber"}`} aria-hidden />
+        {left >= 0
+          ? `${duration(minutes)} out, ${duration(left)} left`
+          : `${duration(minutes)} out, ${duration(-left)} over`}
+      </span>
+    );
   }
 
   // Only what the server will actually charge: the same rule decides both.

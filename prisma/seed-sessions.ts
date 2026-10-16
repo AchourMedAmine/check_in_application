@@ -67,6 +67,8 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     endsAt: at("17", "01:00"),
     audience: "Assigned",
     ...ATTENDANCE_ONLY,
+    // Breaks may last up to 2 hours — shown as time left, never charged.
+    breakAllowanceMinutes: 120,
   },
 
   // ── Saturday 17/10 ────────────────────────────────────────────────────
