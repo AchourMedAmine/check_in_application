@@ -35,8 +35,8 @@ export default function Home() {
   const endSession = async (session: SessionWithStats) => {
     const sure = window.confirm(
       `Close "${session.title}"?\n\nScanning stops. Everyone expected who never came is ` +
-        `charged as absent, and anyone still out longer than the allowance as having ` +
-        `left early. This cannot be undone.`,
+        `charged as absent, and anyone whose breaks run past the allowance in total ` +
+        `as having left early. This cannot be undone.`,
     );
     if (!sure) return;
 

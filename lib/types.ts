@@ -61,6 +61,8 @@ export interface ScanResult {
   refusedReason: "unpaid" | "banned" | "not-registered" | null;
   /** Their team, at a team-linked session (the hackathon); else null. */
   team: TeamBadge | null;
+  /** Minutes of finished breaks in this session so far (cumulative allowance). */
+  breakMinutesSoFar: number | null;
   /** Null when the scan was saved but the figures could not be read. */
   stats: SessionStats | null;
 }
@@ -79,6 +81,8 @@ export type RosterParticipant = Participant & {
   registered?: boolean;
   /** Their team at a team-linked session (the hackathon). */
   team?: string;
+  /** Minutes of finished breaks so far — the running break adds to it. */
+  breakUsed?: number;
 };
 
 export interface AttendanceReport {
@@ -132,6 +136,8 @@ export interface SessionChanges {
     registered: boolean;
     /** Their team at a team-linked session. */
     team?: string;
+    /** Minutes of finished breaks so far. */
+    breakUsed?: number;
   }[];
   stats: SessionStats;
   /** When the session really started, as tapped at a door; null = not yet. */

@@ -161,6 +161,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
             answers: scan.notCharged === null,
             registered: scan.registered !== false,
             team: scan.team?.name,
+            breakUsed: scan.breakMinutesSoFar ?? undefined,
           },
         ])
       );
@@ -183,6 +184,7 @@ export default function ScannerSheet({ session, onClose }: ScannerSheetProps) {
         answers: m.answers,
         registered: m.registered,
         team: m.team,
+        breakUsed: m.breakUsed,
       };
       (m.inside ? inside : onBreak).push(entry);
     }
@@ -334,11 +336,11 @@ function ScanBanner({ result }: { result: ScanResult }) {
       {breakTaken && (
         <p className="result-detail">
           Out for <strong>{breakTaken.breakMinutes} min</strong>
-          {!result.session.mandatory
+          {!result.session.mandatory || result.breakMinutesSoFar === null
             ? "." // attendance only: no allowance to measure against
-            : breakTaken.overAllowance
-              ? `, ${breakTaken.minutesOver} min over the ${allowance} min allowance.`
-              : `, within the ${allowance} min allowance.`}
+            : result.breakMinutesSoFar > allowance
+              ? `, ${result.breakMinutesSoFar} min of breaks in total, ${result.breakMinutesSoFar - allowance} over the ${allowance} min allowance.`
+              : `, ${result.breakMinutesSoFar} of the ${allowance} min allowance used.`}
         </p>
       )}
 

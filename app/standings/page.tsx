@@ -14,9 +14,9 @@ function describe(reason: string, minutes: number): string {
     case "Late":
       return `Arrived ${minutes} min late`;
     case "LeftEarly":
-      return `Left early, out ${minutes} min`;
+      return `Left early, ${minutes} min out in total`;
     default:
-      return `${minutes} min break`;
+      return `${minutes} min of breaks in total`;
   }
 }
 

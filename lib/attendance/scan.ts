@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/db";
 import type { Penalty, Presence, SB, Session } from "@/generated/prisma/client";
 import { ValidationError } from "@/lib/errors";
-import { evaluateBreak, minutesLate, type BreakEvaluation } from "./evaluate-break";
+import {
+  evaluateBreak,
+  finishedBreakMinutes,
+  minutesLate,
+  type BreakEvaluation,
+} from "./evaluate-break";
 import { accountability, hasList, notChargedReason, standingOf } from "./expected";
 import { lockParticipant, lockSession, TX_OPTIONS, type Tx } from "./locks";
 import { chargeBreaks } from "./settle";
@@ -51,6 +56,17 @@ export interface ScanOutcome {
   registered: boolean | null;
   /** Set when the scan was Refused: why they may not come in. */
   refusedReason: "unpaid" | "banned" | "not-registered" | null;
+  /** Minutes of finished breaks in this session so far (the allowance is cumulative). */
+  breakMinutesSoFar: number | null;
+}
+
+/** Finished break minutes for one participant in one session. */
+async function usedBreakMinutes(tx: Tx, participantId: string, sessionId: string) {
+  const intervals = await tx.presence.findMany({
+    where: { participantId, sessionId },
+    select: { checkInAt: true, checkOutAt: true },
+  });
+  return finishedBreakMinutes(intervals);
 }
 
 /**
@@ -121,6 +137,7 @@ async function applyScan(
     // No list yet (a workshop whose roster isn't loaded): nobody is flagged.
     registered: listed ? standing.expected : null,
     refusedReason: null as ScanOutcome["refusedReason"],
+    breakMinutesSoFar: null as number | null,
   };
 
   const open = await tx.presence.findFirst({
@@ -156,6 +173,8 @@ async function applyScan(
       penalty: null,
       insideMinutes: Math.max(0, Math.floor(sinceCheckIn / 60_000)),
       ...quiet,
+      // Finished breaks before this one — the roster adds the running one.
+      breakMinutesSoFar: await usedBreakMinutes(tx, participantId, session.id),
     };
   }
 
@@ -221,8 +240,10 @@ async function applyScan(
   // this records the final length and returns it for the banner. Only this
   // participant is settled here; the roster poll settles everyone else.
   await chargeBreaks(tx, session, now, { participantId });
+  // The allowance is cumulative: the one break penalty hangs off the break
+  // during which the total ran out — so it shows here only if that was this one.
   let penalty =
-    breakTaken?.overAllowance && last
+    last
       ? await tx.penalty.findFirst({
           where: { presenceId: last.id, reason: "OverBreak" },
         })
@@ -266,6 +287,7 @@ async function applyScan(
     notCharged: quiet.notCharged,
     registered: quiet.registered,
     refusedReason: null,
+    breakMinutesSoFar: await usedBreakMinutes(tx, participantId, session.id),
   };
 }
 

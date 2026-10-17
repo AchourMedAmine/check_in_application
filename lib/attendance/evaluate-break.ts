@@ -83,3 +83,54 @@ export function minutesLate({
   const minutes = Math.floor((checkInAt.getTime() - startedAt.getTime()) / 60_000);
   return minutes > LATE_GRACE_MINUTES ? minutes : null;
 }
+
+interface Interval {
+  checkInAt: Date;
+  checkOutAt: Date | null;
+}
+
+/**
+ * The break allowance is CUMULATIVE: one allowance per participant per
+ * session, spent across all their breaks. Given one participant's intervals
+ * in a session, this returns the total minutes out (a break still running is
+ * counted up to `now`) and the break during which the total first went past
+ * the allowance — that break carries the one penalty.
+ */
+export function cumulativeBreaks(
+  intervals: Interval[],
+  allowanceMinutes: number,
+  now: Date
+): {
+  totalMinutes: number;
+  /** Index (in check-in order) of the interval left from when the allowance ran out. */
+  crossedAt: number | null;
+  /** Whether that break is still running (they never came back). */
+  crossedOngoing: boolean;
+} {
+  const sorted = [...intervals].sort((a, b) => a.checkInAt.getTime() - b.checkInAt.getTime());
+  let usedMs = 0;
+  let crossedAt: number | null = null;
+  let crossedOngoing = false;
+  sorted.forEach((iv, i) => {
+    if (!iv.checkOutAt) return; // still inside: no break started
+    const next = sorted[i + 1];
+    const end = next ? next.checkInAt : now;
+    usedMs += Math.max(0, end.getTime() - iv.checkOutAt.getTime());
+    if (crossedAt === null && Math.floor(usedMs / 60_000) > allowanceMinutes) {
+      crossedAt = i;
+      crossedOngoing = !next;
+    }
+  });
+  return { totalMinutes: Math.floor(usedMs / 60_000), crossedAt, crossedOngoing };
+}
+
+/** Minutes of FINISHED breaks only (the person came back from each). */
+export function finishedBreakMinutes(intervals: Interval[]): number {
+  const sorted = [...intervals].sort((a, b) => a.checkInAt.getTime() - b.checkInAt.getTime());
+  let ms = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const out = sorted[i].checkOutAt;
+    if (out) ms += Math.max(0, sorted[i + 1].checkInAt.getTime() - out.getTime());
+  }
+  return Math.floor(ms / 60_000);
+}

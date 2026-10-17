@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import type { Presence, Prisma, Session } from "@/generated/prisma/client";
-import { evaluateBreak } from "./evaluate-break";
+import { cumulativeBreaks } from "./evaluate-break";
 import { lockSession, TX_OPTIONS, type Tx } from "./locks";
 import { accountability, answersFor, type Accountability } from "./expected";
 
@@ -78,10 +78,6 @@ export async function chargeBreaks(
 
   if (presences.length === 0) return { charged: 0, points: 0 };
 
-  // Every break in the session: the interval left from, and when it ended
-  // (the next check-in, or — for a break still running — `now`).
-  const breaks: { presence: Presence; endedAt: Date; ongoing: boolean }[] = [];
-
   const byParticipant = new Map<string, Presence[]>();
   for (const p of presences) {
     const list = byParticipant.get(p.participantId) ?? [];
@@ -89,49 +85,40 @@ export async function chargeBreaks(
     byParticipant.set(p.participantId, list);
   }
 
+  // The allowance is cumulative: 15 minutes of breaks per participant per
+  // session, all breaks added up. The break during which the total went past
+  // it carries the one penalty — more breaks after that cost nothing more.
+  const owedAll: { presence: Presence; ongoing: boolean; totalMinutes: number }[] = [];
   for (const list of byParticipant.values()) {
-    for (let i = 0; i < list.length; i++) {
-      const presence = list[i];
-      if (!presence.checkOutAt) continue; // still inside: no break started
-
-      const next = list[i + 1];
-      if (next) {
-        breaks.push({ presence, endedAt: next.checkInAt, ongoing: false });
-      } else {
-        // Still outside. The break has lasted until now.
-        breaks.push({ presence, endedAt: now, ongoing: true });
-      }
+    const sorted = [...list].sort((a, b) => a.checkInAt.getTime() - b.checkInAt.getTime());
+    const { totalMinutes, crossedAt, crossedOngoing } = cumulativeBreaks(
+      sorted,
+      session.breakAllowanceMinutes,
+      now
+    );
+    if (crossedAt !== null) {
+      owedAll.push({ presence: sorted[crossedAt], ongoing: crossedOngoing, totalMinutes });
     }
   }
 
-  const overdue = breaks
-    .map((b) => ({
-      ...b,
-      evaluation: evaluateBreak({
-        previousCheckOutAt: b.presence.checkOutAt,
-        now: b.endedAt,
-        allowanceMinutes: session.breakAllowanceMinutes,
-      }),
-    }))
-    .filter((b) => b.evaluation.overAllowance);
-
-  if (overdue.length === 0) return { charged: 0, points: 0 };
+  if (owedAll.length === 0) return { charged: 0, points: 0 };
 
   // Everyone in the room answers for their breaks — except those excused by
   // a technical challenge at the same time, and walk-ins to someone else's
   // workshop (they answer at their own).
   const who = options.who ?? (await accountability(tx, session));
-  const owed = overdue.filter((b) => answersFor(who, b.presence.participantId));
+  const owed = owedAll.filter((b) => answersFor(who, b.presence.participantId));
   if (owed.length === 0) return { charged: 0, points: 0 };
 
+  // One break penalty per participant per session, whatever interval it hangs off.
   const existing = await tx.penalty.findMany({
     where: {
-      presenceId: { in: owed.map((b) => b.presence.id) },
-      // The first interval may also carry a Late penalty — not a break's.
+      sessionId: session.id,
+      participantId: { in: owed.map((b) => b.presence.participantId) },
       reason: { in: ["OverBreak", "LeftEarly"] },
     },
   });
-  const byPresence = new Map(existing.map((p) => [p.presenceId, p]));
+  const already = new Map(existing.map((p) => [p.participantId, p]));
 
   const sbs = await tx.participant.findMany({
     where: { id: { in: [...new Set(owed.map((b) => b.presence.participantId))] } },
@@ -142,20 +129,19 @@ export async function chargeBreaks(
   const toCreate: Prisma.PenaltyCreateManyInput[] = [];
 
   for (const b of owed) {
-    const already = byPresence.get(b.presence.id);
+    const charged = already.get(b.presence.participantId);
+    // Ran out of allowance on a break they never came back from, at close.
     const reason =
       b.ongoing && options.finalizing ? "LeftEarly" : ("OverBreak" as const);
 
-    if (already) {
-      // The charge stands; only refine how long the break turned out to be,
-      // so the log reads "45 min" rather than the 16 minutes we first saw.
-      if (
-        already.breakMinutes !== b.evaluation.breakMinutes ||
-        already.reason !== reason
-      ) {
+    if (charged) {
+      // The charge stands; only refine the total time out, so the log reads
+      // "40 min" rather than the 16 minutes first seen.
+      const newReason = charged.reason === "LeftEarly" || reason === "LeftEarly" ? reason : charged.reason;
+      if (charged.breakMinutes !== b.totalMinutes || charged.reason !== newReason) {
         await tx.penalty.update({
-          where: { id: already.id },
-          data: { breakMinutes: b.evaluation.breakMinutes, reason },
+          where: { id: charged.id },
+          data: { breakMinutes: b.totalMinutes, reason: newReason },
         });
       }
       continue;
@@ -166,7 +152,7 @@ export async function chargeBreaks(
       sessionId: session.id,
       presenceId: b.presence.id,
       sb: sbOf.get(b.presence.participantId) ?? null,
-      breakMinutes: b.evaluation.breakMinutes,
+      breakMinutes: b.totalMinutes,
       points: session.penaltyPoints,
       reason,
     });

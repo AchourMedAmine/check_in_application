@@ -8,6 +8,7 @@ import { getSessionStats } from "@/lib/attendance/scan";
 import { TX_OPTIONS } from "@/lib/attendance/locks";
 import { accountability, answersFor, registeredFor } from "@/lib/attendance/expected";
 import { teamNames } from "@/lib/attendance/teams";
+import { finishedBreakMinutes } from "@/lib/attendance/evaluate-break";
 
 const withUser = {
   user: { select: { id: true, email: true, name: true, lastName: true } },
@@ -57,7 +58,7 @@ export async function GET(
     });
     const ids = touched.map((t) => t.participantId);
 
-    const [latest, participants, stats, who, teams] = await Promise.all([
+    const [latest, participants, stats, who, teams, intervals] = await Promise.all([
       // Latest interval per participant decides their current state.
       ids.length
         ? prisma.presence.findMany({
@@ -75,6 +76,12 @@ export async function GET(
       getSessionStats(session),
       ids.length ? accountability(prisma, session) : Promise.resolve(null),
       teamNames(session, ids),
+      ids.length
+        ? prisma.presence.findMany({
+            where: { sessionId: session.id, participantId: { in: ids } },
+            select: { participantId: true, checkInAt: true, checkOutAt: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     const byId = new Map(participants.map((p) => [p.id, p]));
@@ -90,6 +97,10 @@ export async function GET(
           answers: who ? answersFor(who, p.participantId) : true,
           registered: who ? registeredFor(who, p.participantId) !== false : true,
           team: teams.get(p.participantId),
+          // Finished break minutes so far: the allowance is cumulative.
+          breakUsed: finishedBreakMinutes(
+            intervals.filter((i) => i.participantId === p.participantId)
+          ),
         },
       ];
     });

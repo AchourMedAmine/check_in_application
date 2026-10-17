@@ -140,3 +140,49 @@ test("the 11th minute is late, and lateness counts from the real start", () => {
 test("a session nobody marked as started charges no lateness at all", () => {
   assert.equal(late(90, false), null);
 });
+
+// ── Cumulative allowance: 15 minutes of breaks per session ─────────────
+
+import { cumulativeBreaks, finishedBreakMinutes } from "../lib/attendance/evaluate-break";
+
+/** An interval from minute `a` to minute `b` (null = still inside). */
+const iv = (a: number, b: number | null) => ({ checkInAt: plus(a), checkOutAt: b === null ? null : plus(b) });
+
+test("two 10-minute breaks: 20 in total, the second one crosses the 15", () => {
+  // in 0–10, out 10–20, in 20–30, out 30–40, in 40–
+  const r = cumulativeBreaks([iv(0, 10), iv(20, 30), iv(40, null)], 15, plus(60));
+  assert.equal(r.totalMinutes, 20);
+  assert.equal(r.crossedAt, 1);
+  assert.equal(r.crossedOngoing, false);
+});
+
+test("two 7-minute breaks: 14 in total, no penalty", () => {
+  const r = cumulativeBreaks([iv(0, 10), iv(17, 30), iv(37, null)], 15, plus(60));
+  assert.equal(r.totalMinutes, 14);
+  assert.equal(r.crossedAt, null);
+});
+
+test("exactly 15 minutes in total is still within the allowance", () => {
+  const r = cumulativeBreaks([iv(0, 10), iv(25, null)], 15, plus(60));
+  assert.equal(r.totalMinutes, 15);
+  assert.equal(r.crossedAt, null);
+});
+
+test("a break still running counts up to now, and can be the one that crosses", () => {
+  // 10 min earlier, now out for 6 more → 16
+  const r = cumulativeBreaks([iv(0, 10), iv(20, 30)], 15, plus(36));
+  assert.equal(r.totalMinutes, 16);
+  assert.equal(r.crossedAt, 1);
+  assert.equal(r.crossedOngoing, true);
+});
+
+test("once crossed, later breaks add minutes but never a second crossing", () => {
+  const r = cumulativeBreaks([iv(0, 10), iv(30, 40), iv(60, null)], 15, plus(90));
+  assert.equal(r.crossedAt, 0);
+  assert.equal(r.totalMinutes, 40);
+});
+
+test("finished breaks only: a running break is not counted", () => {
+  assert.equal(finishedBreakMinutes([iv(0, 10), iv(18, 30)]), 8);
+  assert.equal(finishedBreakMinutes([iv(0, 10), iv(18, 30), iv(40, null)]), 18);
+});

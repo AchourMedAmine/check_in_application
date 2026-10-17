@@ -195,18 +195,20 @@ function RowMeta({
     );
   }
 
-  // Only what the server will actually charge: the same rule decides both.
-  const pastLimit = mandatory && minutes > allowance;
+  // The allowance is cumulative: this break plus every finished one. Only
+  // what the server will actually charge — the same rule decides both.
+  const used = ((participant as RosterParticipant).breakUsed ?? 0) + minutes;
+  const left = allowance - used;
   const answers = (participant as RosterParticipant).answers !== false;
-  const over = pastLimit && answers;
+  const over = left < 0 && answers;
   return (
     <span className={`roster-meta ${over ? "roster-meta--over" : ""}`}>
       <span className={`dia ${over ? "dia--pink" : "dia--amber"}`} aria-hidden />
-      {over
-        ? `${minutes} min out, −${penaltyPoints}`
-        : pastLimit
-          ? `${minutes} min out, not charged`
-          : `${minutes} min out`}
+      {left >= 0
+        ? `${duration(minutes)} out, ${duration(left)} left`
+        : answers
+          ? `${duration(minutes)} out, ${duration(-left)} over, −${penaltyPoints}`
+          : `${duration(minutes)} out, not charged`}
     </span>
   );
 }

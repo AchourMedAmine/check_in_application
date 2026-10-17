@@ -5,6 +5,7 @@ import { getSessionOrThrow } from "@/lib/attendance/session";
 import { settleBreaks } from "@/lib/attendance/settle";
 import { accountability, answersFor, registeredFor } from "@/lib/attendance/expected";
 import { teamNames } from "@/lib/attendance/teams";
+import { finishedBreakMinutes } from "@/lib/attendance/evaluate-break";
 import { requireAssigned, requireScanner } from "@/lib/scanners";
 
 const withUser = {
@@ -31,6 +32,13 @@ export async function GET(
       where: { sessionId: session.id },
       orderBy: { checkInAt: "desc" },
     });
+
+    // Finished break minutes per participant: the allowance is cumulative.
+    const intervalsOf = new Map<string, typeof presences>();
+    for (const p of presences) {
+      intervalsOf.set(p.participantId, [...(intervalsOf.get(p.participantId) ?? []), p]);
+    }
+    const breakUsed = (pid: string) => finishedBreakMinutes(intervalsOf.get(pid) ?? []);
 
     // Latest interval per participant decides their current state.
     const latest = new Map<string, (typeof presences)[number]>();
@@ -81,6 +89,7 @@ export async function GET(
               answers: answersFor(who, pid),
               registered: registeredFor(who, pid),
               team: teams.get(pid),
+              breakUsed: breakUsed(pid),
             }
           : null;
       })
@@ -98,6 +107,7 @@ export async function GET(
               answers: answersFor(who, pid),
               registered: registeredFor(who, pid),
               team: teams.get(pid),
+              breakUsed: breakUsed(pid),
             }
           : null;
       })

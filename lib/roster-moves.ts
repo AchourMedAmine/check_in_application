@@ -16,6 +16,8 @@ export interface RosterMove {
   registered: boolean;
   /** Their team at a team-linked session (the hackathon). */
   team?: string;
+  /** Minutes of finished breaks so far — the running break adds to it. */
+  breakUsed?: number;
 }
 
 /**
