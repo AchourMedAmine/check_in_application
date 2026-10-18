@@ -203,15 +203,8 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     ...RULES,
   },
 
-  {
-    title: "Closing Ceremony",
-    location: ROOM.ceremonies,
-    startsAt: at("18", "15:00"),
-    endsAt: at("18", "17:00"),
-    audience: "Everyone",
-    // No check-in at the closing: it can never cost points.
-    ...ATTENDANCE_ONLY,
-  },
+  // No Closing Ceremony: there is no check-in at the closing, so it is not
+  // a session here at all (deleted on 18/10).
 ];
 
 /**
