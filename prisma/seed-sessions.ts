@@ -143,8 +143,16 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     // roster is them.
     title: "Pitching Workshop",
     location: ROOM.cesarion,
-    // Mandatory for the technical challenge teams — they are its list.
-    teamActivity: "CHALLENGE",
+    // Its list is the website bookings (copied into session_participants).
+    startsAt: at("18", "09:00"),
+    endsAt: at("18", "10:00"),
+    audience: "Assigned",
+    ...RULES,
+  },
+  {
+    // Website workshop "iiot-breaking-the-cage"; its list is the bookings.
+    title: "Breaking the Cage: How IIoT Gives Robots Senses, Reflexes, and a Human Connection",
+    location: ROOM.sphinx,
     startsAt: at("18", "09:00"),
     endsAt: at("18", "10:00"),
     audience: "Assigned",
