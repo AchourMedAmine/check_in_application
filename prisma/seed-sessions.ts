@@ -209,7 +209,8 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     startsAt: at("18", "15:00"),
     endsAt: at("18", "17:00"),
     audience: "Everyone",
-    ...RULES,
+    // No check-in at the closing: it can never cost points.
+    ...ATTENDANCE_ONLY,
   },
 ];
 
