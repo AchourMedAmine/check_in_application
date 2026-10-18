@@ -24,14 +24,15 @@ export async function GET(req: NextRequest) {
       prisma.penalty.findMany({
         where: sessionId ? { sessionId } : undefined,
         orderBy: { createdAt: "desc" },
-        take: 200,
+        // One session: its complete log. All sessions: the latest 1000.
+        take: sessionId ? undefined : 1000,
         include: {
           session: { select: { title: true } },
           participant: {
             select: {
               id: true,
               sb: true,
-              user: { select: { name: true, lastName: true } },
+              user: { select: { name: true, lastName: true, email: true } },
             },
           },
         },

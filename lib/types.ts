@@ -111,7 +111,7 @@ export type PenaltyRow = Penalty & {
   participant: {
     id: string;
     sb: string | null;
-    user: { name: string; lastName: string } | null;
+    user: { name: string; lastName: string; email: string } | null;
   } | null;
 };
 
