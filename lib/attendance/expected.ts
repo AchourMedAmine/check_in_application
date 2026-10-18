@@ -54,13 +54,21 @@ export async function expectedIds(db: Db, session: Session): Promise<Set<string>
     }),
     session.teamActivity ? teamMemberIds(db, session.teamActivity) : Promise.resolve([]),
   ]);
-  const ids = [...new Set([...listed.map((r) => r.participantId), ...team])];
-  // Unpaid or banned participants are not coming: never on any list.
-  const attending = await db.participant.findMany({
-    where: { id: { in: ids }, ...attendeeWhere },
-    select: { id: true },
-  });
-  return new Set(attending.map((p) => p.id));
+  // Someone booked onto this session by name (workshop bookings) is expected
+  // whether or not their payment is recorded — the booking is the decision.
+  // Team members only if they are attendees (paid). Banned: never.
+  const listedIds = listed.map((r) => r.participantId);
+  const [bookedOk, teamOk] = await Promise.all([
+    db.participant.findMany({
+      where: { id: { in: listedIds }, banned: false },
+      select: { id: true },
+    }),
+    db.participant.findMany({
+      where: { id: { in: team }, ...attendeeWhere },
+      select: { id: true },
+    }),
+  ]);
+  return new Set([...bookedOk, ...teamOk].map((p) => p.id));
 }
 
 /** The challenge sessions that overlap this one in time. */
@@ -153,27 +161,32 @@ export async function standingOf(
   mustAttend: boolean;
   answers: boolean;
 }> {
+  const listedOn = async (s: Session): Promise<boolean> =>
+    (await db.sessionParticipant.count({ where: { sessionId: s.id, participantId } })) > 0;
   const onRoster = async (s: Session): Promise<boolean> => {
     const [listed, team] = await Promise.all([
-      db.sessionParticipant.count({ where: { sessionId: s.id, participantId } }),
+      listedOn(s),
       s.teamActivity ? teamMemberIds(db, s.teamActivity, participantId) : Promise.resolve([]),
     ]);
-    return listed > 0 || team.length > 0;
+    return listed || team.length > 0;
   };
 
-  const [person, onList, excused] = await Promise.all([
+  const [person, onList, booked, excused] = await Promise.all([
     db.participant.findUnique({
       where: { id: participantId },
       select: { paid: true, banned: true },
     }),
     session.audience === "Everyone" ? Promise.resolve(true) : onRoster(session),
+    // Booked onto this session by name: let in even if unpaid.
+    session.audience === "Everyone" ? Promise.resolve(false) : listedOn(session),
     session.challenge
       ? Promise.resolve(false)
       : overlappingChallenges(db, session).then(async (cs) =>
           (await Promise.all(cs.map(onRoster))).some(Boolean)
         ),
   ]);
-  const notAttending = !person || person.banned ? "banned" : !person.paid ? "unpaid" : null;
+  const notAttending =
+    !person || person.banned ? "banned" : !person.paid && !booked ? "unpaid" : null;
   const attendee = notAttending === null;
   const expected = attendee && onList;
   return {
