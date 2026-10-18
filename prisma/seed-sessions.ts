@@ -181,13 +181,12 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
     // Overlaps the second round of workshops: its pitchers are excused
     // from them.
     title: "Technical Pitching — Session 2",
-    // Same teams as session 1. Being on it excuses them from the workshops
-    // at 12:00.
+    // Same teams as session 1. Not an excuse from the 12:00 workshops for
+    // now (decided on 18/10): every booked participant counts there.
     teamActivity: "CHALLENGE",
     startsAt: at("18", "12:00"),
     endsAt: at("18", "13:00"),
     audience: "Assigned",
-    challenge: true,
     ...ATTENDANCE_ONLY,
   },
 
