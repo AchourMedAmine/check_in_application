@@ -192,28 +192,13 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
 
   // Workshops, session 2.
   {
-    // Mohamed Ali Farhat.
-    title: "Building Agentic & Multimodal Systems",
-    location: ROOM.sphinx,
+    // The three round-2 workshops (Building Agentic & Multimodal Systems,
+    // If/Else or AI Agent?, RAS Leaders) as one session, merged on 18/10:
+    // attending any of them counts. Its list is the union of their bookings.
+    title: "Workshops — Session 2",
+    location: "Sphinx, César & Césarion Rooms",
     startsAt: at("18", "12:00"),
     endsAt: at("18", "13:30"),
-    audience: "Assigned",
-    ...RULES,
-  },
-  {
-    // Khalil Masmoudi.
-    title: "If/Else or AI Agent? Picking the Right Tool for the Job",
-    location: ROOM.cesar,
-    startsAt: at("18", "12:00"),
-    endsAt: at("18", "13:00"),
-    audience: "Assigned",
-    ...RULES,
-  },
-  {
-    title: "RAS Leaders",
-    location: ROOM.cesarion,
-    startsAt: at("18", "12:00"),
-    endsAt: at("18", "13:00"),
     audience: "Assigned",
     ...RULES,
   },
@@ -235,6 +220,11 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
  * if empty.
  */
 const MERGED: Record<string, string[]> = {
+  "Workshops — Session 2": [
+    "Building Agentic & Multimodal Systems",
+    "If/Else or AI Agent? Picking the Right Tool for the Job",
+    "RAS Leaders",
+  ],
   "Building Agentic & Multimodal Systems": ["NVIDIA Jetson Nano: Edge AI Workshop"],
   Hackathon: ["Hackathon — Session 1", "Hackathon — Session 2"],
 };

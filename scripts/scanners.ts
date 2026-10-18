@@ -243,7 +243,8 @@ async function main() {
     case "assign":
     case "unassign": {
       const scanner = await find(args[0]);
-      const session = await findSession(args[1]);
+      // Unquoted titles arrive as separate words: join them back.
+      const session = await findSession(args.slice(1).join(" "));
       const key = { scannerId: scanner.id, sessionId: session.id };
       if (command === "assign") {
         await prisma.scannerAssignment.upsert({
