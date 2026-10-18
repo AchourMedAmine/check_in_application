@@ -193,10 +193,10 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
   // Workshops, session 2.
   {
     // Mohamed Ali Farhat.
-    title: "NVIDIA Jetson Nano: Edge AI Workshop",
+    title: "Building Agentic & Multimodal Systems",
     location: ROOM.sphinx,
     startsAt: at("18", "12:00"),
-    endsAt: at("18", "13:00"),
+    endsAt: at("18", "13:30"),
     audience: "Assigned",
     ...RULES,
   },
@@ -235,6 +235,7 @@ const SESSIONS: Prisma.SessionCreateInput[] = [
  * if empty.
  */
 const MERGED: Record<string, string[]> = {
+  "Building Agentic & Multimodal Systems": ["NVIDIA Jetson Nano: Edge AI Workshop"],
   Hackathon: ["Hackathon — Session 1", "Hackathon — Session 2"],
 };
 
